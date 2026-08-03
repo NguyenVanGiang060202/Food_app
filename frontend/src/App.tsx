@@ -3,7 +3,8 @@ import { createBrowserRouter, Link, RouterProvider, useLocation } from "react-ro
 import { ArrowRight, Bookmark, CalendarDays, ChevronLeft, ChevronRight, Clock, Coffee, Heart, MapPin, MessageCircle, Moon, Share2, Sparkles, Star, Users, Utensils, Zap } from "lucide-react";
 import { Header } from "./components/site/Header";
 import { Footer } from "./components/site/Footer";
-import { DishCard, RestaurantCard } from "./components/site/cards";
+import { DishCard, RestaurantCard, RestaurantCardSkeleton } from "./components/site/cards";
+import { Skeleton } from "./components/ui/skeleton";
 import { type Restaurant, type Dish } from "./lib/food-data";
 import { detailToRestaurant, getDish, getPreferences, getRestaurant, getSimilarRestaurants, listCategories, listDishes, listRestaurants, listSavedRestaurantsPage, searchRestaurants, setCachedSavedStatus, signOut, toDish, updatePreferences, type BackendDish, type BackendRestaurantDetail, type BackendCategory, type UserPreferences } from "./lib/api";
 import { AskPage } from "./pages/AskPage";
@@ -35,7 +36,7 @@ function DiscoverPage() {
         if (cancelled) return;
         setCatalog(restaurantsResult.status === "fulfilled" ? restaurantsResult.value : []);
         if (categoriesResult.status === "fulfilled") {
-          setCategories(categoriesResult.value.filter((category) => category.restaurantCount > 0));
+          setCategories(categoriesResult.value);
           setCategoriesFailed(false);
         } else {
           setCategories([]);
@@ -52,7 +53,7 @@ function DiscoverPage() {
     </section>
     <section className="container-page py-16">
       <Reveal><div className="flex items-end justify-between gap-4"><div><div className="text-xs uppercase tracking-widest text-muted-foreground">Dữ liệu nổi bật</div><h2 className="mt-2 font-display text-3xl md:text-4xl">Quán được đánh giá cao</h2></div><div className="flex gap-2"><button type="button" aria-label="Quán trước" onClick={() => moveRatings(-1)} className="rounded-full border border-border bg-card p-2 transition-colors hover:border-primary hover:text-primary"><ChevronLeft className="h-4 w-4" /></button><button type="button" aria-label="Quán tiếp theo" onClick={() => moveRatings(1)} className="rounded-full border border-border bg-card p-2 transition-colors hover:border-primary hover:text-primary"><ChevronRight className="h-4 w-4" /></button></div></div></Reveal>
-      <div ref={ratingsCarouselRef} style={{ touchAction: "pan-x" }} className="mt-8 flex cursor-grab select-none snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-1 pb-3 active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{catalog.slice(0, 12).map((restaurant) => <div key={restaurant.id} className="w-[min(82vw,360px)] shrink-0 snap-start sm:w-[360px]"><RestaurantCard r={restaurant} /></div>)}</div>
+      <div ref={ratingsCarouselRef} style={{ touchAction: "pan-x" }} className="mt-8 flex cursor-grab select-none snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-1 pb-3 active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{busy ? Array.from({ length: 4 }).map((_, i) => <div key={i} className="w-[min(82vw,360px)] shrink-0 snap-start sm:w-[360px]"><RestaurantCardSkeleton /></div>) : catalog.slice(0, 12).map((restaurant) => <div key={restaurant.id} className="w-[min(82vw,360px)] shrink-0 snap-start sm:w-[360px]"><RestaurantCard r={restaurant} /></div>)}</div>
       {!busy && catalog.length === 0 && <p className="mt-6 text-sm text-muted-foreground">Chưa có quán khả dụng trong database.</p>}
     </section>
     <section className="bg-ink text-background">
@@ -60,8 +61,7 @@ function DiscoverPage() {
         <Reveal><div className="grid gap-10 md:grid-cols-[1fr,2fr]">
           <div><div className="text-xs uppercase tracking-widest text-mustard">Theo ẩm thực</div><h2 className="mt-2 font-display text-3xl">Một thế giới bàn ăn,<br />xếp theo gian bếp.</h2></div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {categories.slice(0, 12).map((category) => <Link key={category.slug} to={`/?prompt=${encodeURIComponent(`Gợi ý những nhà hàng ${category.name} ngon và được đánh giá cao gần tôi.`)}`} aria-label={`Hỏi Bếp về nhóm ${category.name}`} className="group rounded-2xl border border-white/10 bg-white/5 p-5 transition-colors hover:border-white/20 hover:bg-white/10"><div className="font-display text-xl">{category.name}</div><div className="mt-1 text-xs text-background/60">{category.restaurantCount} quán</div><span className="mt-4 inline-block text-xs text-mustard opacity-0 transition-opacity group-hover:opacity-100">Hỏi Bếp →</span></Link>)}
-            {categoriesBusy && <div className="col-span-full rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-background/70">Đang tải các nhóm ẩm thực…</div>}
+            {busy || categoriesBusy ? Array.from({ length: 9 }).map((_, i) => <div key={i} className="min-w-0 rounded-2xl border border-white/10 bg-white/5 p-5"><Skeleton inverse className="h-7 w-3/4 rounded-md" /><div className="mt-4" /><Skeleton inverse className="h-4 w-16 rounded-md" /></div>) : categories.slice(0, 12).map((category) => <Link key={category.slug} to={`/?prompt=${encodeURIComponent(`Gợi ý những nhà hàng ${category.name} ngon và được đánh giá cao gần tôi.`)}`} aria-label={`Hỏi Bếp về nhóm ${category.name}`} className="group rounded-2xl border border-white/10 bg-white/5 p-5 transition-colors hover:border-white/20 hover:bg-white/10"><div className="font-display text-xl">{category.name}</div><span className="mt-4 inline-block text-xs text-mustard opacity-0 transition-opacity group-hover:opacity-100">Hỏi Bếp →</span></Link>)}
             {!categoriesBusy && categoriesFailed && <div className="col-span-full rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-background/70">Chưa thể tải nhóm ẩm thực. Thử tải lại trang nhé.</div>}
             {!categoriesBusy && !categoriesFailed && categories.length === 0 && <div className="col-span-full rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-background/70">Chưa có nhóm ẩm thực nào có quán đang hoạt động.</div>}
           </div>

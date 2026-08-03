@@ -57,6 +57,17 @@ Không cam kết tải cao, zero-downtime hoặc dữ liệu real-time.
 
 ## 4. P0 — bắt buộc để đưa lên domain
 
+### P0.0 TODO khi crawl xong — tối ưu lại “quán tương tự”
+
+- Hiện tại `listSimilar` (backend `restaurants.repository.ts`) đã được tinh chỉnh để
+  fallback bằng `name_similarity` + district/price khi DB thiếu dish/category.
+- **Khi crawler chạy đủ dữ liệu (dish + restaurant_category có số lượng thực)**,
+  cần kiểm tra lại section “Quán tương tự” ở `/restaurants/:id`:
+  - Verify overlap dish/category có phát huy không (không còn rơi vào fallback rating).
+  - Điều chỉnh lại trọng số `category_overlap`/`dish_overlap` nếu bị lấn át bởi
+    `name_similarity` (×30).
+  - Rà lại toàn bộ 3 anchor quán hiện có để đối chiếu kết quả.
+
 ### P0.1 Chốt dữ liệu và trải nghiệm demo
 
 - Chọn một phạm vi dữ liệu nhỏ, ví dụ một thành phố và một số nhóm món ăn.

@@ -3,6 +3,35 @@ import type { Dish, Restaurant } from "@/lib/food-data";
 import { formatVnd } from "@/lib/food-data";
 import { Link } from "react-router-dom";
 import { SaveRestaurantButton } from "./SaveRestaurantButton";
+import { Skeleton } from "../ui/skeleton";
+
+// Mirrors RestaurantCard layout (image aspect + text + footer) so it reserves
+// the same height and prevents layout shift while restaurant data loads.
+export function RestaurantCardSkeleton() {
+  return (
+    <div aria-hidden className="flex h-full flex-col rounded-2xl bg-card p-3 shadow-soft">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] items-stretch gap-4">
+        <div className="aspect-square w-full self-start overflow-hidden rounded-xl bg-muted" />
+        <div className="min-w-0 py-1">
+          <div className="flex min-w-0 items-start gap-2">
+            <Skeleton className="h-5 w-3/4 rounded-md" />
+            <div className="shrink-0"><Skeleton className="h-5 w-5 rounded-full" /></div>
+          </div>
+          <Skeleton className="mt-2 h-3 w-1/2 rounded-md" />
+          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
+            <Skeleton className="h-3 w-10 rounded-md" />
+            <Skeleton className="h-3 w-14 rounded-md" />
+          </div>
+          <Skeleton className="mt-3 h-3 w-full rounded-md" />
+          <Skeleton className="mt-1.5 h-3 w-2/3 rounded-md" />
+        </div>
+      </div>
+      <div className="mt-4 border-t border-border/60 pt-3">
+        <Skeleton className="h-8 w-full rounded-full" />
+      </div>
+    </div>
+  );
+}
 
 export function DishCard({ dish, size = "md" }: { dish: Dish; size?: "sm" | "md" | "lg" }) {
   return (

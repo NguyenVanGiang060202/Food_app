@@ -82,7 +82,7 @@ export class RestaurantsRepository {
     async listSimilar(id: string, limit = 12): Promise<RestaurantSummary[]> {
         const boundedLimit = Math.min(Math.max(Math.trunc(limit), 1), 20);
         const result = await this.database.query<SummaryRow>(`WITH target AS (
-              SELECT r.id, r.price_level, l.city, l.district
+              SELECT r.id, r.name, r.normalized_name, r.price_level, l.city, l.district
               FROM restaurant r JOIN location l ON l.id = r.location_id
               WHERE r.id = $1 AND r.status = 'active'
             ), target_categories AS (
@@ -98,6 +98,7 @@ export class RestaurantsRepository {
                 AND d.normalized_name <> ''
             ), scored AS (
               SELECT r.id,
+                (GREATEST(similarity(r.name, target.name), similarity(r.normalized_name, target.normalized_name))) AS name_similarity,
                 (
                   SELECT COUNT(DISTINCT rc.category_id)::int
                   FROM restaurant_category rc
@@ -138,13 +139,14 @@ export class RestaurantsRepository {
             LEFT JOIN category c ON c.id = rc.category_id AND c.is_active = true
             LEFT JOIN LATERAL (SELECT ri.url FROM restaurant_image ri WHERE ri.restaurant_id = r.id AND ri.is_cover = true AND ri.status = 'active' ORDER BY ri.sort_order, ri.id LIMIT 1) cover ON true
             LEFT JOIN LATERAL (SELECT rs.source_url FROM restaurant_source rs JOIN data_source ds ON ds.id = rs.data_source_id WHERE rs.restaurant_id = r.id AND rs.status = 'active' AND ds.code = 'google_maps_playwright' AND rs.source_url IS NOT NULL ORDER BY rs.last_seen_at DESC, rs.id LIMIT 1) source ON true
-            GROUP BY r.id, l.id, cover.url, source.source_url, s.category_overlap, s.dish_overlap, s.candidate_category_count, s.target_category_count, s.price_match, s.district_match, s.city_match
+            GROUP BY r.id, l.id, cover.url, source.source_url, s.name_similarity, s.category_overlap, s.dish_overlap, s.candidate_category_count, s.target_category_count, s.price_match, s.district_match, s.city_match
             ORDER BY (CASE WHEN s.category_overlap > 0 OR s.dish_overlap > 0 THEN 1 ELSE 0 END) DESC,
               (s.category_overlap * 12
                 + s.dish_overlap * 10
                 + CASE WHEN s.target_category_count > 0 THEN (s.category_overlap::real / s.target_category_count) * 8 ELSE 0 END
                 + CASE WHEN s.candidate_category_count > 0 THEN (s.category_overlap::real / s.candidate_category_count) * 4 ELSE 0 END
-                + s.price_match * 2 + s.district_match + s.city_match * 0.5) DESC,
+                + s.name_similarity * 30
+                + s.price_match * 4 + s.district_match * 3 + s.city_match * 1) DESC,
               r.rating DESC NULLS LAST, r.review_count DESC NULLS LAST, r.updated_at DESC, r.id DESC
             LIMIT $2`, [id, boundedLimit]);
         return result.rows.map(row => this.toSummary(row));
