@@ -1,0 +1,189 @@
+# Next Work Roadmap — Portfolio Deployment
+
+## 1. Mục tiêu đã chốt
+
+Project này được tối ưu cho:
+
+- Một sản phẩm portfolio có thể demo bằng domain thật.
+- Một người vận hành, hoặc nhóm rất nhỏ, có thể quản lý được.
+- Quy mô sử dụng ban đầu dưới khoảng 500 người, không yêu cầu SLA enterprise.
+- Chi phí hạ tầng và chi phí AI thấp, ưu tiên free tier/chi phí cố định nhỏ.
+- Có đủ chiều sâu kỹ thuật để trình bày: React, TypeScript, REST API,
+  PostgreSQL/PostGIS/pgvector, crawler, Docker, CI và recommendation flow.
+
+Không dùng “production enterprise” làm tiêu chuẩn hoàn thành. Các hạng mục như
+MFA, Kubernetes, multi-region, distributed rate limiting, observability platform
+và backup tự động nhiều lớp chỉ làm khi sản phẩm có người dùng thật và có nhu cầu.
+
+## 2. Định nghĩa hoàn thành
+
+Project được xem là **hoàn thành cho portfolio** khi:
+
+1. Có một domain HTTPS truy cập được từ Internet.
+2. Visitor có thể khám phá, tìm kiếm, xem chi tiết, xem bản đồ và nhận gợi ý.
+3. User có thể đăng ký/đăng nhập, lưu nhà hàng và chỉnh preference.
+4. Dữ liệu demo đủ tốt, có nguồn tham chiếu và không hiển thị dữ liệu bịa.
+5. Crawler có thể chạy bounded để cập nhật dữ liệu theo cách có kiểm soát.
+6. CI pass typecheck, unit test, build và browser smoke test.
+7. Một người khác có thể chạy local theo README và hiểu kiến trúc qua docs.
+8. Không để lộ secret, database không mở public, và có cách khôi phục thủ công
+   tối thiểu trước khi cập nhật schema.
+
+Mốc này phù hợp với website showcase và dưới 500 người dùng không đồng thời.
+Không cam kết tải cao, zero-downtime hoặc dữ liệu real-time.
+
+## 3. Trạng thái hiện tại
+
+### Đã hoàn thành
+
+- Backend, crawler và frontend typecheck pass.
+- Backend tests: 46/46 pass.
+- Crawler tests: 38/38 pass.
+- Frontend unit tests: 22/22 pass.
+- Backend, crawler và frontend production build pass.
+- Playwright smoke flow đã có cho recommendation, empty/reset, lỗi backend,
+  discovery, map, auth và save flow.
+- REST API có health/readiness, validation, request ID, structured errors,
+  CORS allowlist, security headers, request-size limit và in-process rate limit.
+- Authentication dùng HttpOnly session cookie; bearer fallback chỉ giữ cho
+  backward compatibility.
+- User role `user`/`admin`, admin guard và script promote-admin đã có.
+- PostgreSQL image sạch đã được xác minh với 5 extension, bảng lõi,
+  role constraint và unique image index.
+- Docker Compose có PostgreSQL, Redis, backend và production frontend profile.
+- Frontend production image có SPA fallback, reverse proxy `/api/` và healthz.
+- CI chạy check, test, build, Playwright, build frontend image, `nginx -t` và
+  schema assertion cho database image.
+
+## 4. P0 — bắt buộc để đưa lên domain
+
+### P0.1 Chốt dữ liệu và trải nghiệm demo
+
+- Chọn một phạm vi dữ liệu nhỏ, ví dụ một thành phố và một số nhóm món ăn.
+- Dùng [frontend release checklist](20-frontend-release-checklist.md) để kiểm tra
+  local trước khi mua domain hoặc VPS.
+- Chạy fixture hoặc bounded approved-source crawl để có dữ liệu ổn định.
+- Kiểm tra thủ công các route: `/`, `/discover`, `/search`, `/map`,
+  `/restaurants/:id`, `/dishes/:id`, `/auth`, `/saved`, `/profile`.
+- Sửa các lỗi làm hỏng demo: ảnh, empty state, loading, mobile layout,
+  link nguồn và dữ liệu thiếu.
+- Không mở rộng thêm Telegram, mobile app, provider mới hoặc AI workflow mới
+  trước khi hoàn tất mốc này.
+
+**Kết quả:** người xem portfolio có thể mở domain và đi hết visitor flow trong
+vài phút mà không gặp màn hình trống hoặc dữ liệu giả.
+
+### P0.2 Chuẩn hóa cấu hình production nhỏ
+
+- Tạo file env production theo nền tảng deploy; không commit secret.
+- Đặt `NODE_ENV=production`, `APP_ORIGIN` bằng domain frontend và allowlist CORS
+  chỉ chứa domain đó.
+- Dùng `AUTH_SECRET`, `ADMIN_API_KEY`, PostgreSQL password đủ mạnh và riêng biệt.
+- Tắt `AUTH_EXPOSE_VERIFICATION_LINK` và `AUTH_EXPOSE_RESET_LINK`.
+- Nếu chưa cấu hình SMTP/OAuth, ẩn hoặc ghi rõ các flow đó thay vì để nút hỏng.
+- Dùng HTTPS ở reverse proxy/hosting; frontend gọi API qua cùng-origin `/api/v1`
+  để tránh CORS không cần thiết.
+
+**Kết quả:** deploy không dùng secret mặc định/local fallback và không expose
+PostgreSQL/Redis/backend trực tiếp ra Internet.
+
+### P0.3 Deploy một máy chủ đơn giản
+
+- Dùng một VPS nhỏ hoặc nền tảng Docker có persistent volume.
+- Chạy frontend production, backend, PostgreSQL và Redis bằng Compose hoặc
+  dịch vụ managed tương đương.
+- Đặt reverse proxy/HTTPS ở máy chủ hoặc dùng proxy của nền tảng.
+- Bind PostgreSQL, Redis và backend vào private network/loopback.
+- Cấu hình restart policy, healthcheck và volume cho PostgreSQL.
+- Chạy migration một lần trước khi mở traffic.
+- Chạy smoke test domain: frontend, `/healthz`, `/api/v1/health`, search,
+  detail và login.
+
+**Kết quả:** domain hoạt động ổn định ở quy mô nhỏ; khi server restart, app và
+database tự khởi động lại.
+
+### P0.4 Tài liệu portfolio
+
+- README có screenshot/GIF, tính năng, architecture diagram và live demo link.
+- Ghi rõ data source, giới hạn crawler, công nghệ và trade-off.
+- Có hướng dẫn local setup ngắn gọn, demo account hoặc seed data an toàn.
+- Có một phần “What I would build next” trỏ tới P1/P2, không mô tả tính năng
+  chưa tồn tại như đã hoàn thành.
+
+**Kết quả:** repository có thể được reviewer clone, chạy và đánh giá trong
+10–15 phút.
+
+## 5. P1 — nên làm nếu còn thời gian/ngân sách
+
+### P1.1 Vận hành tối thiểu
+
+- Tạo backup PostgreSQL thủ công trước mỗi migration lớn.
+- Viết một lệnh restore vào database tạm và chạy thử ít nhất một lần.
+- Bật log rotation hoặc giới hạn disk log.
+- Có healthcheck và hướng dẫn xem logs/restart services.
+- Thêm một uptime check đơn giản từ nền tảng hosting hoặc dịch vụ miễn phí.
+
+Không cần Prometheus, Grafana, tracing, alert routing hay dashboard metrics
+riêng cho mốc dưới 500 người.
+
+### P1.2 Crawler an toàn và thực dụng
+
+- Chạy crawler thủ công hoặc cron bounded với tần suất thấp.
+- Giới hạn số query/result, timeout và retry.
+- Không chạy live crawl trong CI.
+- Kiểm tra terms, robots/access policy và chỉ dùng nguồn được phép.
+- Ghi lại lần crawl cuối và trạng thái lỗi để operator biết dữ liệu có cũ không.
+
+Không cần BullMQ hoặc worker cluster khi chưa có workload liên tục.
+
+### P1.3 Chất lượng giao diện
+
+- Thêm accessibility smoke cho keyboard, landmark, contrast và alt text.
+- Kiểm tra responsive trên mobile thật hoặc Chromium mobile.
+- Thêm custom 404, error boundary và thông báo lỗi thân thiện.
+- Tối ưu ảnh và bundle nếu hosting có giới hạn bandwidth.
+
+## 6. P2 — chỉ làm khi sản phẩm có traction
+
+- MFA và phân quyền admin nâng cao.
+- Distributed rate limiting và nhiều instance backend.
+- Queue/worker supervision liên tục, metrics và alerting đầy đủ.
+- Upgrade migration matrix và backup/restore rehearsal định kỳ.
+- Staging environment, immutable image registry và rollback tự động.
+- AI explanation có schema, evaluation Recall@K/NDCG@K và cost tracking.
+- Provider thứ hai, curation workflow và freshness dashboard.
+- User export/delete, retention policy và privacy workflow đầy đủ.
+- Kubernetes, autoscaling, multi-region hoặc zero-downtime deployment.
+
+Đây là phần mở rộng, **không phải điều kiện để hoàn thành portfolio MVP**.
+
+## 7. Checklist release domain
+
+- [ ] Dữ liệu demo đã được kiểm tra và có nguồn tham chiếu.
+- [ ] `npm run check` pass.
+- [ ] Backend/crawler/frontend tests pass.
+- [ ] Tất cả workspace build pass.
+- [ ] Playwright smoke pass.
+- [ ] Production frontend image build và `nginx -t` pass.
+- [ ] Production secrets đã thay toàn bộ giá trị local/default.
+- [ ] `APP_ORIGIN` và CORS trỏ đúng domain HTTPS.
+- [ ] PostgreSQL/Redis/backend không có public ingress.
+- [ ] Migration đã chạy thành công trên database production.
+- [ ] Backup thủ công đã tạo trước migration.
+- [ ] Domain HTTPS, frontend, API health và các route chính hoạt động.
+- [ ] README có live link, screenshot và hướng dẫn chạy.
+
+## 8. Ngân sách và nguyên tắc làm việc
+
+Với mục tiêu này, nên ưu tiên hoàn thành P0 trước khi tiêu thêm cho P1/P2.
+Không gọi model/API để xây các tính năng ngoài checklist. Gom các thay đổi liên
+quan thành một task, chạy test một lần cuối, và chỉ mở rộng scope khi có lỗi
+blocking hoặc giá trị portfolio rõ ràng.
+
+## 9. Nguyên tắc tài liệu
+
+- Source code và trạng thái test là căn cứ cho tính năng đã hoàn thành.
+- Roadmap này là kế hoạch cho portfolio deployment, không phải enterprise plan.
+- Khi một milestone hoàn tất, cập nhật roadmap và domain document liên quan.
+- Giữ terminal command ASCII-only trong PowerShell và không đưa secret thật vào
+  repository, issue hoặc log chia sẻ.

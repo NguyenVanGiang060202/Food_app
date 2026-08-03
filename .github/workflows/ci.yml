@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Workspace typechecks
+        run: npm run check
+
+      - name: Backend tests
+        run: npm test --workspace backend
+
+      - name: Crawler tests
+        run: npm test --workspace crawler
+
+      - name: Build backend
+        run: npm run build --workspace backend
+
+      - name: Build crawler
+        run: npm run build --workspace crawler
+
+      - name: Build frontend
+        run: npm run build --workspace frontend
+
+      - name: Frontend unit tests
+        run: npm test --workspace frontend
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Frontend browser tests
+        run: npm run test:e2e --workspace frontend
+
+      - name: Build frontend production image
+        run: docker build --file frontend/Dockerfile --tag food-app-frontend:${{ github.sha }} .
+
+      - name: Validate frontend Nginx configuration
+        run: docker run --rm --add-host backend:127.0.0.1 food-app-frontend:${{ github.sha }} nginx -t
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build database image
+        run: docker build --file database/docker/Dockerfile --tag food-app-postgres:${{ github.sha }} .
+
+      - name: Start clean database
+        run: |
+          docker run --detach --name food-app-postgres-ci \
+            --env POSTGRES_DB=food_app \
+            --env POSTGRES_USER=food_app \
+            --env POSTGRES_PASSWORD=ci-only-password \
+            food-app-postgres:${{ github.sha }}
+
+      - name: Wait for database and validate schema
+        run: |
+          for attempt in {1..30}; do
+            if docker exec food-app-postgres-ci pg_isready -U food_app -d food_app; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec food-app-postgres-ci psql -v ON_ERROR_STOP=1 -U food_app -d food_app -c "
+            DO \\$verify\\$
+            DECLARE
+              extension_count integer;
+            BEGIN
+              SELECT count(*) INTO extension_count
+              FROM pg_extension
+              WHERE extname IN ('postgis', 'vector', 'pg_trgm', 'unaccent', 'pgcrypto');
+              IF extension_count <> 5 THEN
+                RAISE EXCEPTION 'Expected 5 required extensions, found %', extension_count;
+              END IF;
+
+              IF to_regclass('public.restaurant') IS NULL
+                 OR to_regclass('public.app_user') IS NULL
+                 OR to_regclass('public.restaurant_image') IS NULL THEN
+                RAISE EXCEPTION 'One or more core tables are missing';
+              END IF;
+
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'app_user_role_check'
+              ) THEN
+                RAISE EXCEPTION 'app_user_role_check is missing';
+              END IF;
+
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'restaurant_image_source_url_uidx'
+              ) THEN
+                RAISE EXCEPTION 'restaurant_image_source_url_uidx is missing';
+              END IF;
+            END
+            \\$verify\\$;
+          "
+
+      - name: Remove database container
+        if: always()
+        run: docker rm --force food-app-postgres-ci

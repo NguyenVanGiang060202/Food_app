@@ -1,0 +1,21 @@
+{
+  "name": "food-discovery-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-native food discovery and restaurant recommendation platform.",
+  "workspaces": [
+    "backend",
+    "crawler",
+    "frontend"
+  ],
+  "scripts": {
+    "check": "npm run check --workspaces --if-present",
+    "db:migrate": "powershell -ExecutionPolicy Bypass -File database/scripts/migrate.ps1"
+  },
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "dependencies": {
+    "@dietrichgebert/ponytail": "^4.8.4"
+  }
+}

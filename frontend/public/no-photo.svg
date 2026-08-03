@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title desc">
+  <title id="title">No photo available</title>
+  <desc id="desc">Neutral placeholder shown when a source image was not observed.</desc>
+  <rect width="800" height="600" fill="#eee9df"/>
+  <path d="M0 470 180 315l120 105 115-130 205 180 180-105v235H0Z" fill="#d8d0c1"/>
+  <circle cx="575" cy="190" r="62" fill="#c7bdab"/>
+  <rect x="230" y="495" width="340" height="4" rx="2" fill="#958a78" opacity=".55"/>
+  <text x="400" y="540" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#665d50">Chưa có ảnh</text>
+</svg>
