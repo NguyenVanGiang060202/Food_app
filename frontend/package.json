@@ -19,6 +19,7 @@
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
+    "motion": "^12.43.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.9.6",

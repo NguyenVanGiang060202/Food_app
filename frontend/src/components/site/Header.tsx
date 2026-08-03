@@ -2,6 +2,7 @@ import { MessageCircle, Compass, Map, Bookmark, User } from "lucide-react";
 import mark from "@/assets/bep-mark.png";
 import { useAuth } from "@/hooks/useAuth";
 import { Link, NavLink } from "react-router-dom";
+import { motion } from "motion/react";
 
 const nav = [
   { to: "/", label: "Hỏi Bếp", icon: MessageCircle },
@@ -14,7 +15,7 @@ export function Header() {
   const { user } = useAuth();
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur-md">
+      <motion.header initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }} className="sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur-md">
         <div className="container-page flex h-16 items-center gap-6">
           <Link to="/" className="flex shrink-0 items-center gap-2">
             <img src={mark} alt="" width={512} height={512} className="h-8 w-8 object-contain" />
@@ -55,7 +56,7 @@ export function Header() {
             )}
           </div>
         </div>
-      </header>
+      </motion.header>
 
       <BottomNav />
     </>

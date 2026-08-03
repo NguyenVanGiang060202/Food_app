@@ -606,6 +606,25 @@
   to { transform: rotate(360deg); }
 }
 
+/* Press feedback for cards and tiles: subtle scale on :active, fast ease-out. */
+.pressable {
+  transition: transform 160ms ease-out;
+}
+
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* Respect reduced-motion: keep opacity/color feedback, drop movement. */
+@media (prefers-reduced-motion: reduce) {
+  .pressable {
+    transition: none;
+  }
+  .pressable:active {
+    transform: none;
+  }
+}
+
 @media (min-width: 768px) {
   .food-filters {
     grid-template-columns: repeat(4, minmax(0, 1fr));

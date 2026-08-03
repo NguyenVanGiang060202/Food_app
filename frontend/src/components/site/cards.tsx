@@ -8,7 +8,7 @@ export function DishCard({ dish, size = "md" }: { dish: Dish; size?: "sm" | "md"
   return (
     <Link
       to={`/dishes/${encodeURIComponent(dish.id)}`}
-      className="group block overflow-hidden rounded-2xl bg-card shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lift"
+      className="group block overflow-hidden rounded-2xl bg-card shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift"
     >
       <div className={`relative overflow-hidden ${size === "lg" ? "aspect-[4/5]" : "aspect-[4/3]"}`}>
         <img
@@ -52,7 +52,7 @@ export function DishCard({ dish, size = "md" }: { dish: Dish; size?: "sm" | "md"
 export function RestaurantCard({ r, compact = false, dense = false, saved }: { r: Restaurant; compact?: boolean; dense?: boolean; saved?: boolean }) {
   if (dense) {
     return (
-      <article className="group flex h-full min-h-0 flex-col overflow-hidden rounded-xl bg-card p-2 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lift">
+      <article className="group flex h-full min-h-0 flex-col overflow-hidden rounded-xl bg-card p-2 shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift">
         <Link to={`/restaurants/${r.id}`} className="block aspect-[2.5/1] shrink-0 overflow-hidden rounded-lg bg-muted">
           {r.image ? <img src={r.image} alt={r.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <img src="/no-photo.svg" alt="Chưa có ảnh" className="h-full w-full object-cover" />}
         </Link>
@@ -72,7 +72,7 @@ export function RestaurantCard({ r, compact = false, dense = false, saved }: { r
     );
   }
   return (
-    <article className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lift ${compact ? "p-2.5" : "p-3"}`}>
+    <article className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift ${compact ? "p-2.5" : "p-3"}`}>
       <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] items-stretch ${compact ? "gap-2.5" : "gap-4"}`}>
         <Link to={`/restaurants/${r.id}`} className={`block aspect-square w-full self-start overflow-hidden rounded-xl bg-muted ${compact ? "rounded-lg" : ""}`}>
           {r.image ? <img src={r.image} alt={r.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <img src="/no-photo.svg" alt="Chưa có ảnh" className="h-full w-full object-cover" />}
