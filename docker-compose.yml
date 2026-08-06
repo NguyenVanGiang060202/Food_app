@@ -27,7 +27,7 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       PORT: 3000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-food_app}:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/${POSTGRES_DB:-food_app}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-food_app}:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/${POSTGRES_DB:-food_app}}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
       AUTH_API_ORIGIN: ${AUTH_API_ORIGIN:-http://localhost:3000}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-replace-with-a-local-secret}
