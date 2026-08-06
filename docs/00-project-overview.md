@@ -1,8 +1,8 @@
-# Food Discovery Platform - Project Overview
+# NoN? Platform - Project Overview
 
 ## 1. Project Name
 
-Food Discovery Platform
+NoN? Platform
 
 ## 2. Project Purpose
 
@@ -56,7 +56,7 @@ The system collects:
 - Images.
 - Reviews.
 - Social media information.
-- Popular dishes.
+- ???c g?i nhi?u dishes.
 
 ---
 

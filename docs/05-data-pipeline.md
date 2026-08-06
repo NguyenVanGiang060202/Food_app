@@ -51,14 +51,14 @@ and is also exposed for operational retry/review.
 
 The pipeline consumes `SourceRestaurantRecord` objects emitted by a provider adapter. The minimum required fields are:
 
-| Field | Requirement |
-| --- | --- |
-| `providerCode` | Must identify an active configured data source. |
-| `externalId` | Must be stable and unique within the provider. |
-| `collectedAt` | Must indicate when the source data was retrieved. |
-| `name` | Required unless the provider record is rejected as unusable. |
-| `sourceUrl` | Required when the source exposes a stable record URL. |
-| `sourceMetadata` | Must include data required to audit the collection result. |
+| Field            | Requirement                                                  |
+| ---------------- | ------------------------------------------------------------ |
+| `providerCode`   | Must identify an active configured data source.              |
+| `externalId`     | Must be stable and unique within the provider.               |
+| `collectedAt`    | Must indicate when the source data was retrieved.            |
+| `name`           | Required unless the provider record is rejected as unusable. |
+| `sourceUrl`      | Required when the source exposes a stable record URL.        |
+| `sourceMetadata` | Must include data required to audit the collection result.   |
 
 Other fields, including address, coordinates, ratings, categories, reviews, and images, are optional. Missing optional fields reduce completeness but do not automatically make a record invalid.
 
@@ -88,18 +88,18 @@ step; successful persistence currently records the `normalization=completed` sta
 
 Normalization converts provider formats into consistent internal values without losing the original source reference.
 
-| Data type | Normalization rules |
-| --- | --- |
-| Names | Trim whitespace, normalize Unicode, remove repeated spacing, and create a comparison form in `normalized_name`. |
-| Addresses | Standardize spacing, components, country code, and formatted address conventions. |
-| Phone numbers | Parse to a consistent international representation when country context is known. |
-| URLs | Validate scheme, normalize host and redundant tracking parameters where safe. |
-| Coordinates | Convert to WGS 84 latitude/longitude and validate ranges before creating a PostGIS point. |
-| Ratings | Convert provider scale only when its scale is known; otherwise preserve as source metadata. |
-| Price levels | Map provider values to the project-controlled price-level scale with a documented mapping. |
-| Hours | Convert to day/time intervals and retain source text if parsing is incomplete. |
-| Categories | Map source labels to controlled category candidates; preserve unknown labels for review. |
-| Text | Sanitize encoding, remove unsafe markup, and enforce length limits. |
+| Data type     | Normalization rules                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------- |
+| Names         | Trim whitespace, normalize Unicode, remove repeated spacing, and create a comparison form in `normalized_name`. |
+| Addresses     | Standardize spacing, components, country code, and formatted address conventions.                               |
+| Phone numbers | Parse to a consistent international representation when country context is known.                               |
+| URLs          | Validate scheme, normalize host and redundant tracking parameters where safe.                                   |
+| Coordinates   | Convert to WGS 84 latitude/longitude and validate ranges before creating a PostGIS point.                       |
+| Ratings       | Convert provider scale only when its scale is known; otherwise preserve as source metadata.                     |
+| Price levels  | Map provider values to the project-controlled price-level scale with a documented mapping.                      |
+| Hours         | Convert to day/time intervals and retain source text if parsing is incomplete.                                  |
+| Categories    | Map source labels to controlled category candidates; preserve unknown labels for review.                        |
+| Text          | Sanitize encoding, remove unsafe markup, and enforce length limits.                                             |
 
 Normalization must be deterministic. Any provider-specific assumptions or mappings must be versioned in code and test fixtures.
 
@@ -144,14 +144,14 @@ Entity matching determines whether a source record belongs to an existing canoni
 
 ### Match signals
 
-| Signal | Example use |
-| --- | --- |
-| Provider identity | Exact same provider and external ID. |
-| Name similarity | Normalized exact, token, or trigram similarity. |
-| Geographic distance | Candidate must be within a defined distance threshold. |
-| Address similarity | Street, district, city, and formatted-address comparison. |
-| Phone or website | Strong identity signal when valid. |
-| Category consistency | Supporting signal, never the sole identity signal. |
+| Signal               | Example use                                               |
+| -------------------- | --------------------------------------------------------- |
+| Provider identity    | Exact same provider and external ID.                      |
+| Name similarity      | Normalized exact, token, or trigram similarity.           |
+| Geographic distance  | Candidate must be within a defined distance threshold.    |
+| Address similarity   | Street, district, city, and formatted-address comparison. |
+| Phone or website     | Strong identity signal when valid.                        |
+| Category consistency | Supporting signal, never the sole identity signal.        |
 
 The matching result stores its decision, confidence, algorithm version, and relevant evidence. Automated matching should favor precision over recall; uncertain records must not merge unrelated venues.
 
@@ -227,13 +227,13 @@ The content hash prevents unnecessary embedding costs. Search or embedding failu
 
 Each canonical restaurant should have a derived quality state based on measurable fields.
 
-| Level | Example criteria | Search behavior |
-| --- | --- | --- |
-| Complete | Name, valid location, category, and sufficient source support. | Fully searchable and eligible for recommendation. |
-| Partial | Name plus at least one stable identity or location field. | Searchable with limited ranking confidence. |
-| Unresolved | Identity or matching ambiguity remains. | Not publicly searchable until resolved. |
-| Invalid | Fails validation or violates policy. | Excluded from canonical discovery. |
-| Inactive | Closed, restricted, or no longer available. | Excluded or clearly labeled by product rules. |
+| Level      | Example criteria                                               | Search behavior                                   |
+| ---------- | -------------------------------------------------------------- | ------------------------------------------------- |
+| Complete   | Name, valid location, category, and sufficient source support. | Fully searchable and eligible for recommendation. |
+| Partial    | Name plus at least one stable identity or location field.      | Searchable with limited ranking confidence.       |
+| Unresolved | Identity or matching ambiguity remains.                        | Not publicly searchable until resolved.           |
+| Invalid    | Fails validation or violates policy.                           | Excluded from canonical discovery.                |
+| Inactive   | Closed, restricted, or no longer available.                    | Excluded or clearly labeled by product rules.     |
 
 Quality thresholds must be implemented as documented rules, not hidden assumptions in client code.
 
@@ -241,13 +241,13 @@ Quality thresholds must be implemented as documented rules, not hidden assumptio
 
 ## 13. Failure Handling and Recovery
 
-| Failure type | Pipeline response |
-| --- | --- |
-| Invalid source field | Mark the source record failed or skipped with validation details. |
-| Temporary database or queue failure | Retry the stage with bounded exponential backoff. |
-| Ambiguous duplicate match | Keep the source record unresolved and send it to review or later matching. |
-| Enrichment or embedding failure | Retain canonical data; retry only the derived-data task. |
-| Unsupported provider data | Preserve allowed source attribution and mark unsupported fields for adapter review. |
+| Failure type                        | Pipeline response                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------- |
+| Invalid source field                | Mark the source record failed or skipped with validation details.                   |
+| Temporary database or queue failure | Retry the stage with bounded exponential backoff.                                   |
+| Ambiguous duplicate match           | Keep the source record unresolved and send it to review or later matching.          |
+| Enrichment or embedding failure     | Retain canonical data; retry only the derived-data task.                            |
+| Unsupported provider data           | Preserve allowed source attribution and mark unsupported fields for adapter review. |
 
 In the current implementation, invalid records are logged and do not block unrelated
 records. A transaction failure in `CanonicalUpsertPipeline.process` is rolled back

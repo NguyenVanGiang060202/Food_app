@@ -21,13 +21,13 @@ food-app/
 └── package.json                 # Optional workspace root tooling
 ```
 
-| Directory | Ownership |
-| --- | --- |
-| `backend/` | NestJS API, domain services, queue producers, and API tests. |
-| `crawler/` | Provider adapters and crawler worker runtime. |
-| `database/` | Database schema, migrations, seeds, and database utilities. |
-| `frontend/` | React web application and frontend tests. |
-| `docs/` | Architecture, contracts, operational rules, and setup docs. |
+| Directory   | Ownership                                                    |
+| ----------- | ------------------------------------------------------------ |
+| `backend/`  | NestJS API, domain services, queue producers, and API tests. |
+| `crawler/`  | Provider adapters and crawler worker runtime.                |
+| `database/` | Database schema, migrations, seeds, and database utilities.  |
+| `frontend/` | React web application and frontend tests.                    |
+| `docs/`     | Architecture, contracts, operational rules, and setup docs.  |
 
 ---
 

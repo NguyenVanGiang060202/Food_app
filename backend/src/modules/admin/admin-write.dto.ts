@@ -5,4 +5,6 @@ export class CreateCrawlRunDto {
   @IsString() @IsIn(['discovery', 'detail_refresh', 'reconciliation', 'backfill']) jobType!: string;
   @IsObject() target!: Record<string, unknown>;
 }
-export class ProcessingRecordParamDto { @IsUUID() id!: string; }
+export class ProcessingRecordParamDto {
+  @IsUUID() id!: string;
+}

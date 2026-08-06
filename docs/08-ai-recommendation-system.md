@@ -67,15 +67,15 @@ Every result returned to a client must reference a canonical restaurant ID. Gene
 
 The recommendation request can include:
 
-| Input | Example | Use |
-| --- | --- | --- |
-| Free-text query | “Quiet coffee shop for working” | Primary user intent. |
-| Coordinates | Latitude and longitude | Nearby search and distance ranking. |
-| Geographic filter | City, district, radius | Search scope. |
-| Structured filters | Price level, category, rating, open now | Hard constraints or ranking signals. |
-| Time context | Current local time | Opening-status checks when reliable. |
-| User preferences | Vegetarian, favorite cuisines | Optional personalization. |
-| Interaction history | Saved or dismissed restaurants | Optional preference signal. |
+| Input               | Example                                 | Use                                  |
+| ------------------- | --------------------------------------- | ------------------------------------ |
+| Free-text query     | “Quiet coffee shop for working”         | Primary user intent.                 |
+| Coordinates         | Latitude and longitude                  | Nearby search and distance ranking.  |
+| Geographic filter   | City, district, radius                  | Search scope.                        |
+| Structured filters  | Price level, category, rating, open now | Hard constraints or ranking signals. |
+| Time context        | Current local time                      | Opening-status checks when reliable. |
+| User preferences    | Vegetarian, favorite cuisines           | Optional personalization.            |
+| Interaction history | Saved or dismissed restaurants          | Optional preference signal.          |
 
 Input validation and privacy controls occur before any AI-provider call. Geographic and user context are optional; the system must work without them.
 
@@ -147,13 +147,13 @@ Query embeddings are generated only for semantic-search requests that benefit fr
 
 Candidate retrieval combines complementary methods rather than depending on a single score.
 
-| Retrieval source | Best for | Notes |
-| --- | --- | --- |
-| Keyword/full-text search | Exact restaurant or dish names, direct terms. | Uses normalized text and searchable document fields. |
+| Retrieval source               | Best for                                                   | Notes                                                  |
+| ------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------ |
+| Keyword/full-text search       | Exact restaurant or dish names, direct terms.              | Uses normalized text and searchable document fields.   |
 | Category and attribute filters | Explicit cuisine, dietary, price, and feature constraints. | Hard filters apply before broad ranking when reliable. |
-| Geospatial search | Nearby places and geographic boundaries. | Uses PostGIS and a bounded radius. |
-| Vector similarity | Intent and concept similarity beyond exact keywords. | Uses pgvector embeddings. |
-| Popularity/quality candidates | Broad discovery with weak query intent. | Must not dominate relevance or distance. |
+| Geospatial search              | Nearby places and geographic boundaries.                   | Uses PostGIS and a bounded radius.                     |
+| Vector similarity              | Intent and concept similarity beyond exact keywords.       | Uses pgvector embeddings.                              |
+| Popularity/quality candidates  | Broad discovery with weak query intent.                    | Must not dominate relevance or distance.               |
 
 Each retrieval source returns a bounded candidate set. Candidate IDs are merged and deduplicated before ranking. The system should preserve source scores internally for evaluation but not expose unstable raw scores as a public contract.
 
@@ -194,16 +194,16 @@ finalScore =
 
 The actual formula and weights are configuration, not frontend code. They must be versioned and adjustable through controlled experiments.
 
-| Signal | Description |
-| --- | --- |
-| Relevance | Keyword/full-text match to the original query. |
-| Semantic similarity | Vector similarity between query and restaurant search document. |
-| Category and attributes | Match to explicit and inferred intent. |
-| Distance | Geographic proximity, subject to user context and requested radius. |
-| Quality | Rating, review volume, data completeness, and source confidence. |
-| Preference | Match to explicit user preferences and trusted interaction signals. |
-| Freshness | Recency of verified source data where relevant. |
-| Diversity | Optional penalty to avoid near-duplicate results. |
+| Signal                  | Description                                                         |
+| ----------------------- | ------------------------------------------------------------------- |
+| Relevance               | Keyword/full-text match to the original query.                      |
+| Semantic similarity     | Vector similarity between query and restaurant search document.     |
+| Category and attributes | Match to explicit and inferred intent.                              |
+| Distance                | Geographic proximity, subject to user context and requested radius. |
+| Quality                 | Rating, review volume, data completeness, and source confidence.    |
+| Preference              | Match to explicit user preferences and trusted interaction signals. |
+| Freshness               | Recency of verified source data where relevant.                     |
+| Diversity               | Optional penalty to avoid near-duplicate results.                   |
 
 No single signal should dominate without product approval. Ranking changes require offline evaluation before broad release.
 
@@ -277,14 +277,14 @@ AI output must be schema validated and either reviewed, confidence-gated, or tre
 
 Recommendation quality must be measured continuously.
 
-| Area | Example metrics |
-| --- | --- |
-| Retrieval | Recall@K, candidate coverage, zero-result rate. |
-| Ranking | NDCG@K, MRR, click-through rate, save rate, dismissal rate. |
-| Search quality | Query reformulation rate, filter use, result abandonment. |
-| Geographic relevance | Distance distribution and location-filter compliance. |
-| AI interpretation | Schema validity, supported-filter precision, fallback rate. |
-| Explanations | Latency, unsupported-claim reports, user helpfulness feedback. |
+| Area                 | Example metrics                                                    |
+| -------------------- | ------------------------------------------------------------------ |
+| Retrieval            | Recall@K, candidate coverage, zero-result rate.                    |
+| Ranking              | NDCG@K, MRR, click-through rate, save rate, dismissal rate.        |
+| Search quality       | Query reformulation rate, filter use, result abandonment.          |
+| Geographic relevance | Distance distribution and location-filter compliance.              |
+| AI interpretation    | Schema validity, supported-filter precision, fallback rate.        |
+| Explanations         | Latency, unsupported-claim reports, user helpfulness feedback.     |
 | Cost and reliability | Tokens, embedding cost, model latency, error rate, cache hit rate. |
 
 Offline evaluation uses curated query-to-relevant-restaurant judgments. Online experiments must be controlled, reversible, and privacy-aware.
@@ -293,14 +293,14 @@ Offline evaluation uses curated query-to-relevant-restaurant judgments. Online e
 
 ## 15. Failure and Fallback Behavior
 
-| Failure | Required fallback |
-| --- | --- |
-| Embedding unavailable | Use keyword, structured, and geographic retrieval. |
-| AI query interpretation fails | Use original query and deterministic filter parsing. |
-| Explanation generation fails | Return ranked restaurants without explanations. |
-| Vector index delayed | Use the latest available vector or keyword fallback. |
-| Incomplete restaurant data | Rank conservatively and omit unsupported explanation claims. |
-| No candidates match strict filters | Explain the empty state and suggest relaxed filters. |
+| Failure                            | Required fallback                                            |
+| ---------------------------------- | ------------------------------------------------------------ |
+| Embedding unavailable              | Use keyword, structured, and geographic retrieval.           |
+| AI query interpretation fails      | Use original query and deterministic filter parsing.         |
+| Explanation generation fails       | Return ranked restaurants without explanations.              |
+| Vector index delayed               | Use the latest available vector or keyword fallback.         |
+| Incomplete restaurant data         | Rank conservatively and omit unsupported explanation claims. |
+| No candidates match strict filters | Explain the empty state and suggest relaxed filters.         |
 
 Core restaurant search must remain useful when all AI services are unavailable.
 

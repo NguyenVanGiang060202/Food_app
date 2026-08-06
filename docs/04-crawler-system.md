@@ -74,14 +74,14 @@ interface DataProviderAdapter {
 }
 ```
 
-| Contract element | Requirement |
-| --- | --- |
-| `providerCode` | Must match one active `data_source.code` value. |
-| Configuration validation | Must fail early and safely if required configuration is absent. |
-| Discovery | Produces source records for a query, geographic area, or configured target. |
-| Detail refresh | Optional; used only when a provider supports an approved detail endpoint or page. |
-| Output | Must follow the normalized source-record schema below. |
-| Errors | Must use typed, non-secret error details so retry policy can classify them. |
+| Contract element         | Requirement                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| `providerCode`           | Must match one active `data_source.code` value.                                   |
+| Configuration validation | Must fail early and safely if required configuration is absent.                   |
+| Discovery                | Produces source records for a query, geographic area, or configured target.       |
+| Detail refresh           | Optional; used only when a provider supports an approved detail endpoint or page. |
+| Output                   | Must follow the normalized source-record schema below.                            |
+| Errors                   | Must use typed, non-secret error details so retry policy can classify them.       |
 
 Provider-specific selectors, request formats, authentication details, and parsing code must remain inside the adapter implementation.
 
@@ -120,14 +120,14 @@ SourceRestaurantRecord
 
 ## 7. Crawl Job Types
 
-| Job type | Trigger | Purpose |
-| --- | --- | --- |
-| Discovery crawl | Scheduled or manual | Find restaurants in a target area or category. |
-| Detail refresh | Scheduled | Refresh known restaurant details. |
-| Review refresh | Scheduled | Refresh allowed review metadata or content. |
-| Image refresh | Scheduled or event-driven | Refresh permitted image references. |
-| Reconciliation crawl | Scheduled | Check whether known source records still exist or changed. |
-| Backfill crawl | Manual, controlled | Populate historical records for a bounded target. |
+| Job type             | Trigger                   | Purpose                                                    |
+| -------------------- | ------------------------- | ---------------------------------------------------------- |
+| Discovery crawl      | Scheduled or manual       | Find restaurants in a target area or category.             |
+| Detail refresh       | Scheduled                 | Refresh known restaurant details.                          |
+| Review refresh       | Scheduled                 | Refresh allowed review metadata or content.                |
+| Image refresh        | Scheduled or event-driven | Refresh permitted image references.                        |
+| Reconciliation crawl | Scheduled                 | Check whether known source records still exist or changed. |
+| Backfill crawl       | Manual, controlled        | Populate historical records for a bounded target.          |
 
 The implemented executor accepts only `discovery`. The admin API can persist a
 bounded target containing `city`, `district`, `category`, and `limit`; unsupported
@@ -145,13 +145,13 @@ policies.
 
 Scheduling balances data freshness, provider impact, and operating cost. Initial defaults should be conservative and tuned only after observing real crawl volume and source rules.
 
-| Data type | Initial refresh approach |
-| --- | --- |
-| New area discovery | Manual or low-frequency scheduled crawl. |
-| Restaurant details | Refresh periodically, prioritizing active and high-traffic venues. |
-| Opening hours and status | Refresh more frequently than static details when permitted. |
-| Ratings and review counts | Refresh on a controlled schedule. |
-| Images and review content | Refresh only when needed and retention is permitted. |
+| Data type                 | Initial refresh approach                                           |
+| ------------------------- | ------------------------------------------------------------------ |
+| New area discovery        | Manual or low-frequency scheduled crawl.                           |
+| Restaurant details        | Refresh periodically, prioritizing active and high-traffic venues. |
+| Opening hours and status  | Refresh more frequently than static details when permitted.        |
+| Ratings and review counts | Refresh on a controlled schedule.                                  |
+| Images and review content | Refresh only when needed and retention is permitted.               |
 
 The scheduler must avoid overlapping jobs for the same provider and target unless explicitly configured. It should deduplicate queued work and record the desired freshness window for each source record.
 
@@ -192,14 +192,14 @@ The fixture CLI is a test-only harness and must not be used to populate producti
 
 Crawler errors are classified before retrying.
 
-| Error class | Examples | Initial handling |
-| --- | --- | --- |
-| Transient | Network timeout, temporary provider error, queue interruption. | Retry with exponential backoff and bounded attempts. |
-| Rate limited | HTTP 429 or provider-throttling signal. | Delay work and reduce request rate. |
-| Invalid input | Malformed target, missing required provider record ID. | Do not retry; mark failed. |
-| Parse failure | Unexpected page or response structure. | Do not repeatedly retry unchanged input; alert for adapter review. |
-| Access restricted | Login requirement, CAPTCHA, blocked access, policy restriction. | Stop collection and mark the provider or job for review. |
-| Configuration | Missing credential or invalid environment configuration. | Do not retry; fail fast and alert. |
+| Error class       | Examples                                                        | Initial handling                                                   |
+| ----------------- | --------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Transient         | Network timeout, temporary provider error, queue interruption.  | Retry with exponential backoff and bounded attempts.               |
+| Rate limited      | HTTP 429 or provider-throttling signal.                         | Delay work and reduce request rate.                                |
+| Invalid input     | Malformed target, missing required provider record ID.          | Do not retry; mark failed.                                         |
+| Parse failure     | Unexpected page or response structure.                          | Do not repeatedly retry unchanged input; alert for adapter review. |
+| Access restricted | Login requirement, CAPTCHA, blocked access, policy restriction. | Stop collection and mark the provider or job for review.           |
+| Configuration     | Missing credential or invalid environment configuration.        | Do not retry; fail fast and alert.                                 |
 
 At runtime, a provider/configuration/executor failure causes the worker to call
 `CrawlRunRepository.markFailed`; the run receives `failed`, `finished_at`, and

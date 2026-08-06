@@ -68,7 +68,8 @@ export class PlaywrightBrowser {
   }
 
   private ensureStarted(): Browser {
-    if (!this.browser) throw new Error('PlaywrightBrowser has not been started. Call start() first.');
+    if (!this.browser)
+      throw new Error('PlaywrightBrowser has not been started. Call start() first.');
     return this.browser;
   }
 }

@@ -60,39 +60,64 @@ export function parseReviewCount(text: string | undefined | null): number | unde
   const groups = cleaned.match(/\d[\d.,]*/g);
   if (!groups || groups.length === 0) return undefined;
   const last = groups[groups.length - 1];
-  if (groups.length === 1 && /^\d[.,]\d$/.test(last) && Number(last.replace(',', '.')) <= 5) return undefined;
+  if (groups.length === 1 && /^\d[.,]\d$/.test(last) && Number(last.replace(',', '.')) <= 5)
+    return undefined;
   return toCount(last);
 }
 
 export function isLikelyRestaurantName(name: string | undefined | null): boolean {
   if (!name?.trim()) return false;
-  const normalized = name.trim().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  return !/(^|\b)(thanh pho|city|district|quan|phuong|ward|tinh|province|huyen|county)\b/.test(normalized);
+  const normalized = name
+    .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return !/(^|\b)(thanh pho|city|district|quan|phuong|ward|tinh|province|huyen|county)\b/.test(
+    normalized,
+  );
 }
 
-export function parseCoordinatesFromUrl(url: string | undefined | null): { latitude: number; longitude: number } | undefined {
+export function parseCoordinatesFromUrl(
+  url: string | undefined | null,
+): { latitude: number; longitude: number } | undefined {
   if (!url) return undefined;
-  const match = url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)
-    ?? url.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+  const match =
+    url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/) ??
+    url.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
   if (!match) return undefined;
   const latitude = Number(match[1]);
   const longitude = Number(match[2]);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return undefined;
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  )
+    return undefined;
   return { latitude, longitude };
 }
 
 export function normalizeCategorySlug(category: string | undefined | null): string | undefined {
   if (!category?.trim()) return undefined;
-  const normalized = category.trim().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const normalized = category
+    .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
   const aliases: Record<string, string> = {
-    'coffee': 'coffee-shop',
+    coffee: 'coffee-shop',
     'coffee-shop': 'coffee-shop',
-    'cafe': 'coffee-shop',
-    'restaurant': 'restaurant',
+    cafe: 'coffee-shop',
+    restaurant: 'restaurant',
     'vietnamese-restaurant': 'vietnamese',
     'vegetarian-restaurant': 'vegetarian',
     'quan-chay': 'vegetarian',
-    'chay': 'vegetarian',
+    chay: 'vegetarian',
     'quan-an-viet-nam': 'vietnamese',
     'vietnamese-food': 'vietnamese',
   };
@@ -105,7 +130,9 @@ export function normalizeGoogleImageUrl(url: string | undefined | null): string 
   return url.replace(/=[^/?]+$/, '');
 }
 
-export function normalizeImages(images: Array<{ url: string; altText?: string }>): Array<{ url: string; altText?: string }> {
+export function normalizeImages(
+  images: Array<{ url: string; altText?: string }>,
+): Array<{ url: string; altText?: string }> {
   const seen = new Map<string, { url: string; altText?: string }>();
   for (const image of images) {
     const normalized = normalizeGoogleImageUrl(image.url);
@@ -136,22 +163,56 @@ export function extractPlaceIdFromUrl(url: string | undefined | null): string | 
 }
 
 const REVIEW_UNIT_MS: Record<string, number> = {
-  minute: 60_000, minutes: 60_000, phút: 60_000,
-  hour: 3_600_000, hours: 3_600_000, giờ: 3_600_000,
-  day: 86_400_000, days: 86_400_000, ngày: 86_400_000,
-  week: 604_800_000, weeks: 604_800_000, tuần: 604_800_000,
-  month: 2_592_000_000, months: 2_592_000_000, tháng: 2_592_000_000,
-  year: 31_536_000_000, years: 31_536_000_000, năm: 31_536_000_000,
+  minute: 60_000,
+  minutes: 60_000,
+  phút: 60_000,
+  hour: 3_600_000,
+  hours: 3_600_000,
+  giờ: 3_600_000,
+  day: 86_400_000,
+  days: 86_400_000,
+  ngày: 86_400_000,
+  week: 604_800_000,
+  weeks: 604_800_000,
+  tuần: 604_800_000,
+  month: 2_592_000_000,
+  months: 2_592_000_000,
+  tháng: 2_592_000_000,
+  year: 31_536_000_000,
+  years: 31_536_000_000,
+  năm: 31_536_000_000,
 };
 
 const REVIEW_NUMBER_WORDS: Record<string, number> = {
-  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5,
-  six: 6, seven: 7, eight: 8, nine: 9, ten: 10, vài: 2,
-  một: 1, hai: 2, ba: 3, bốn: 4, năm: 5, sáu: 6, bảy: 7, tám: 8, chín: 9, mười: 10,
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  vài: 2,
+  một: 1,
+  hai: 2,
+  ba: 3,
+  bốn: 4,
+  năm: 5,
+  sáu: 6,
+  bảy: 7,
+  tám: 8,
+  chín: 9,
+  mười: 10,
 };
 
-const REVIEW_UNIT_PATTERN = 'minutes?|hours?|days?|weeks?|months?|years?|phút|giờ|ngày|tuần|tháng|năm';
-const REVIEW_NUMBER_PATTERN = '\\d+(?:[.,]\\d+)?|a|an|one|two|three|four|five|six|seven|eight|nine|ten|vài|một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười';
+const REVIEW_UNIT_PATTERN =
+  'minutes?|hours?|days?|weeks?|months?|years?|phút|giờ|ngày|tuần|tháng|năm';
+const REVIEW_NUMBER_PATTERN =
+  '\\d+(?:[.,]\\d+)?|a|an|one|two|three|four|five|six|seven|eight|nine|ten|vài|một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười';
 
 export function parseReviewDate(text: string | undefined | null): string | undefined {
   if (!text?.trim()) return undefined;
@@ -162,8 +223,18 @@ export function parseReviewDate(text: string | undefined | null): string | undef
   );
   if (englishDate) {
     const month = [
-      'january', 'february', 'march', 'april', 'may', 'june',
-      'july', 'august', 'september', 'october', 'november', 'december',
+      'january',
+      'february',
+      'march',
+      'april',
+      'may',
+      'june',
+      'july',
+      'august',
+      'september',
+      'october',
+      'november',
+      'december',
     ].indexOf(englishDate[1].toLowerCase());
     const day = Number(englishDate[2]);
     const year = Number(englishDate[3]);
@@ -174,7 +245,9 @@ export function parseReviewDate(text: string | undefined | null): string | undef
 
   const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (isoDate) {
-    return new Date(Date.UTC(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3]))).toISOString();
+    return new Date(
+      Date.UTC(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3])),
+    ).toISOString();
   }
 
   const specials: Record<string, number> = { 'hôm nay': 0, today: 0, 'hôm qua': 1, yesterday: 1 };
@@ -184,7 +257,10 @@ export function parseReviewDate(text: string | undefined | null): string | undef
   }
 
   const relative = value.match(
-    new RegExp(`^(?:(${REVIEW_NUMBER_PATTERN})\\s+)?(${REVIEW_UNIT_PATTERN})\\s+(?:trước|ago)$`, 'i'),
+    new RegExp(
+      `^(?:(${REVIEW_NUMBER_PATTERN})\\s+)?(${REVIEW_UNIT_PATTERN})\\s+(?:trước|ago)$`,
+      'i',
+    ),
   );
   if (relative) {
     const numberText = relative[1];
@@ -192,7 +268,7 @@ export function parseReviewDate(text: string | undefined | null): string | undef
     const unitMs = REVIEW_UNIT_MS[unit];
     if (!unitMs) return undefined;
     const amount = numberText
-      ? (Number(numberText.replace(',', '.')) || REVIEW_NUMBER_WORDS[numberText.toLowerCase()])
+      ? Number(numberText.replace(',', '.')) || REVIEW_NUMBER_WORDS[numberText.toLowerCase()]
       : 1;
     if (!Number.isFinite(amount) || amount <= 0) return undefined;
     return new Date(Date.now() - amount * unitMs).toISOString();

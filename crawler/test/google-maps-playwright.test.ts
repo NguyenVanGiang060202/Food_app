@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLikelyRestaurantName, normalizeImages, parseRating, parseReviewCount, extractPlaceIdFromUrl, parseReviewDate, inferLanguageCode, parseCoordinatesFromUrl, normalizeCategorySlug } from '../src/providers/google-maps/google-maps.parser';
+import {
+  isLikelyRestaurantName,
+  normalizeImages,
+  parseRating,
+  parseReviewCount,
+  extractPlaceIdFromUrl,
+  parseReviewDate,
+  inferLanguageCode,
+  parseCoordinatesFromUrl,
+  normalizeCategorySlug,
+} from '../src/providers/google-maps/google-maps.parser';
 import { GoogleMapsPlaywrightProvider } from '../src/providers/google-maps/google-maps-playwright.provider';
 
 test('parseRating handles decimal point', () => {
@@ -73,12 +83,19 @@ test('place name filter excludes city and district cards', () => {
 });
 
 test('parseCoordinatesFromUrl extracts map coordinates', () => {
-  assert.deepEqual(parseCoordinatesFromUrl('https://www.google.com/maps/place/Test/@10.7769,106.7009,15z/data=!3m1!1e3'), { latitude: 10.7769, longitude: 106.7009 });
+  assert.deepEqual(
+    parseCoordinatesFromUrl(
+      'https://www.google.com/maps/place/Test/@10.7769,106.7009,15z/data=!3m1!1e3',
+    ),
+    { latitude: 10.7769, longitude: 106.7009 },
+  );
 });
 
 test('parseCoordinatesFromUrl extracts coordinates from Google Maps place data URLs', () => {
   assert.deepEqual(
-    parseCoordinatesFromUrl('https://www.google.com/maps/place/Test/data=!4m7!3m6!1splace-id!8m2!3d10.7870716!4d106.6964204!16s%2Fg%2Fexample'),
+    parseCoordinatesFromUrl(
+      'https://www.google.com/maps/place/Test/data=!4m7!3m6!1splace-id!8m2!3d10.7870716!4d106.6964204!16s%2Fg%2Fexample',
+    ),
     { latitude: 10.7870716, longitude: 106.6964204 },
   );
 });
@@ -94,7 +111,8 @@ test('normalizeCategorySlug maps crawler labels to canonical category slugs', ()
 });
 
 test('extractPlaceIdFromUrl extracts long base64-like id', () => {
-  const url = 'https://www.google.com/maps/place/Qu%C3%A1n+Test/@10.77,106.70,15z/data=!4m8!3m7!1s0x3175292929:0xabc123def456!8m2!3d10.77!4d106.70';
+  const url =
+    'https://www.google.com/maps/place/Qu%C3%A1n+Test/@10.77,106.70,15z/data=!4m8!3m7!1s0x3175292929:0xabc123def456!8m2!3d10.77!4d106.70';
   const id = extractPlaceIdFromUrl(url);
   assert.ok(id, 'should extract an id');
   assert.equal(id!.length >= 20, true);
@@ -117,11 +135,17 @@ test('parseReviewDate converts relative dates to ISO', () => {
   const parsed = parseReviewDate('2 weeks ago');
   assert.ok(parsed, 'expected relative date to parse');
   const diffMs = Date.now() - Date.parse(parsed);
-  assert.ok(diffMs > 12 * 86_400_000 && diffMs < 16 * 86_400_000, `expected ~2 weeks ago, got ${diffMs}ms`);
+  assert.ok(
+    diffMs > 12 * 86_400_000 && diffMs < 16 * 86_400_000,
+    `expected ~2 weeks ago, got ${diffMs}ms`,
+  );
   const vietnamese = parseReviewDate('4 tháng trước');
   assert.ok(vietnamese);
   const diffMonths = Date.now() - Date.parse(vietnamese);
-  assert.ok(diffMonths > 110 * 86_400_000 && diffMonths < 130 * 86_400_000, `expected ~4 months ago, got ${diffMonths}ms`);
+  assert.ok(
+    diffMonths > 110 * 86_400_000 && diffMonths < 130 * 86_400_000,
+    `expected ~4 months ago, got ${diffMonths}ms`,
+  );
 });
 
 test('parseReviewDate ignores invalid dates', () => {
@@ -143,27 +167,33 @@ test('Google Maps provider forwards the discovery limit to the crawler', async (
       crawlerOptions = options;
       return {
         async crawl() {
-          return [{
-            name: 'Test place',
-            rating: undefined,
-            reviewCount: undefined,
-            address: undefined,
-            category: undefined,
-            url: 'https://www.google.com/maps/place/Test+place',
-            phone: undefined,
-            website: undefined,
-            priceLevel: undefined,
-            openingHours: [],
-            coordinates: undefined,
-            reviews: [],
-          }];
+          return [
+            {
+              name: 'Test place',
+              rating: undefined,
+              reviewCount: undefined,
+              address: undefined,
+              category: undefined,
+              url: 'https://www.google.com/maps/place/Test+place',
+              phone: undefined,
+              website: undefined,
+              priceLevel: undefined,
+              openingHours: [],
+              coordinates: undefined,
+              reviews: [],
+            },
+          ];
         },
       };
     },
   });
 
   const records = [];
-  for await (const record of provider.discover({ query: 'coffee shop', location: 'District 1', limit: 3 })) {
+  for await (const record of provider.discover({
+    query: 'coffee shop',
+    location: 'District 1',
+    limit: 3,
+  })) {
     records.push(record);
   }
 
@@ -193,26 +223,32 @@ test('Google Maps provider generates a deterministic external id when a result h
   const provider = new GoogleMapsPlaywrightProvider({
     crawlerFactory: () => ({
       async crawl() {
-        return [{
-          name: 'Stable place',
-          rating: undefined,
-          reviewCount: undefined,
-          address: '1 Test Street',
-          category: undefined,
-          url: undefined,
-          phone: undefined,
-          website: undefined,
-          priceLevel: undefined,
-          openingHours: [],
-          coordinates: undefined,
-          reviews: [],
-        }];
+        return [
+          {
+            name: 'Stable place',
+            rating: undefined,
+            reviewCount: undefined,
+            address: '1 Test Street',
+            category: undefined,
+            url: undefined,
+            phone: undefined,
+            website: undefined,
+            priceLevel: undefined,
+            openingHours: [],
+            coordinates: undefined,
+            reviews: [],
+          },
+        ];
       },
     }),
   });
 
   const records = [];
-  for await (const record of provider.discover({ query: 'coffee', city: 'Ho Chi Minh City', limit: 1 })) {
+  for await (const record of provider.discover({
+    query: 'coffee',
+    city: 'Ho Chi Minh City',
+    limit: 1,
+  })) {
     records.push(record);
   }
 

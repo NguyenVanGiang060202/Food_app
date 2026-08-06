@@ -13,6 +13,13 @@ The backend exposes the public catalog API under `/api/v1`.
 - `POST /api/v1/recommendations`
 - `GET /api/v1/categories`
 - `GET /api/v1/categories/:slug`
+- `POST /api/v1/auth/signup`
+- `POST /api/v1/auth/signin`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/auth/verify-email?token=...`
+- `POST /api/v1/auth/request-password-reset`
+- `POST /api/v1/auth/reset-password`
 
 ## Implemented protected operations endpoints
 
@@ -73,12 +80,21 @@ For admin endpoints, set:
 ADMIN_API_KEY=replace-with-a-local-secret
 ```
 
-To enable real verification and password-reset email delivery, configure SMTP. When
-these variables are absent, local development keeps the existing development-link
-behavior only when `AUTH_EXPOSE_VERIFICATION_LINK=true` or
+To enable real verification and password-reset email delivery, configure Brevo
+Transactional Email API or SMTP. When these variables are absent, local development
+keeps the existing development-link behavior only when `AUTH_EXPOSE_VERIFICATION_LINK=true` or
 `AUTH_EXPOSE_RESET_LINK=true` is explicitly enabled.
 
 ```dotenv
+# Preferred: Brevo Transactional Email API
+BREVO_API_KEY=replace-with-brevo-transactional-api-key
+MAIL_FROM_NAME=HoiBep
+MAIL_FROM_EMAIL=noreply@example.com
+
+# SMTP fallback option A: one SMTP connection string
+SMTP_URL=smtp://mailer@example.com:replace-with-an-app-password@smtp.example.com:587
+
+# SMTP fallback option B: individual SMTP fields
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -88,7 +104,10 @@ SMTP_FROM=Food Discovery <mailer@example.com>
 ```
 
 With SMTP configured, verification and reset links are sent by email and are not
-included in API responses.
+included in API responses. `APP_ORIGIN` must point to the frontend origin because
+email links open `/auth?verifyToken=...` and `/auth?resetToken=...` in the React app.
+For local SMTP tools such as MailHog/Mailpit, leave `SMTP_USER` and `SMTP_PASSWORD`
+empty and set `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM`.
 
 For any environment exposed beyond localhost, set a unique `AUTH_SECRET` and keep
 both development link flags disabled:

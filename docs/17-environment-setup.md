@@ -8,13 +8,13 @@ This document defines the expected local development setup. It is intentionally 
 
 ## 2. Required Tools
 
-| Tool | Purpose |
-| --- | --- |
-| Git | Source control. |
+| Tool                                     | Purpose                                                 |
+| ---------------------------------------- | ------------------------------------------------------- |
+| Git                                      | Source control.                                         |
 | Docker Desktop / Docker Engine + Compose | Run PostgreSQL, Redis, and local services consistently. |
-| Node.js LTS | Run React, NestJS, crawler, and tooling. |
-| Package manager | Use one project-standard choice: npm, pnpm, or yarn. |
-| Optional database client | Inspect local PostgreSQL during development. |
+| Node.js LTS                              | Run React, NestJS, crawler, and tooling.                |
+| Package manager                          | Use one project-standard choice: npm, pnpm, or yarn.    |
+| Optional database client                 | Inspect local PostgreSQL during development.            |
 
 Pin Node and package-manager versions in repository configuration once selected.
 
@@ -24,14 +24,14 @@ Pin Node and package-manager versions in repository configuration once selected.
 
 Docker Compose provides these initial services:
 
-| Service | Default local role |
-| --- | --- |
-| PostgreSQL | Canonical database with PostGIS and pgvector enabled. |
-| Redis | Available local Redis service; crawler currently uses PostgreSQL for crawl-run claiming. |
-| Backend | REST API. |
-| Crawler worker | One-shot bounded provider collection job (`worker:once`). |
-| Pipeline worker | Not currently implemented as a separate service. |
-| Frontend | Vite development server or production-like local container. |
+| Service         | Default local role                                                                       |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| PostgreSQL      | Canonical database with PostGIS and pgvector enabled.                                    |
+| Redis           | Available local Redis service; crawler currently uses PostgreSQL for crawl-run claiming. |
+| Backend         | REST API.                                                                                |
+| Crawler worker  | One-shot bounded provider collection job (`worker:once`).                                |
+| Pipeline worker | Not currently implemented as a separate service.                                         |
+| Frontend        | Vite development server or production-like local container.                              |
 
 Expose only developer-needed ports to the host. Do not expose databases to non-local interfaces by default.
 
@@ -59,7 +59,27 @@ NODE_ENV=development
 DATABASE_URL=postgresql://food_app:change-me-locally@localhost:5432/food_app
 REDIS_URL=redis://localhost:6379
 APP_ORIGIN=http://localhost:5173
+AUTH_API_ORIGIN=http://localhost:3000
+AUTH_SECRET=replace-with-a-long-random-secret
+AUTH_EXPOSE_VERIFICATION_LINK=false
+AUTH_EXPOSE_RESET_LINK=false
+
+# SMTP email delivery for account verification and password reset.
+# Use either SMTP_URL or SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD.
+SMTP_URL=
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=mailer@example.com
+SMTP_PASSWORD=replace-with-an-app-password
+SMTP_FROM="Food Discovery <mailer@example.com>"
 ```
+
+Email verification and password reset links are generated from `APP_ORIGIN` and open
+the frontend auth page as `/auth?verifyToken=...` or `/auth?resetToken=...`. In local
+development without SMTP, enable `AUTH_EXPOSE_VERIFICATION_LINK=true` or
+`AUTH_EXPOSE_RESET_LINK=true` only temporarily to expose development-only tokens in API
+responses. Never enable those flags in production.
 
 Frontend variables expose only safe public configuration:
 

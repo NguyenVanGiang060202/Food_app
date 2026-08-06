@@ -1,7 +1,15 @@
 import type { DataProviderAdapter } from '../provider.interface';
 import type { DiscoveryInput, SourceRestaurantRecord } from '../../types/source-record';
-import { GoogleMapsPlaywrightCrawler, type GoogleMapsCrawlerOptions } from './google-maps-playwright.crawler';
-import { parseRating, parseReviewCount, normalizeCategorySlug, extractPlaceIdFromUrl } from './google-maps.parser';
+import {
+  GoogleMapsPlaywrightCrawler,
+  type GoogleMapsCrawlerOptions,
+} from './google-maps-playwright.crawler';
+import {
+  parseRating,
+  parseReviewCount,
+  normalizeCategorySlug,
+  extractPlaceIdFromUrl,
+} from './google-maps.parser';
 import { createHash } from 'node:crypto';
 
 const HCMC = 'Ho Chi Minh City';
@@ -13,13 +21,17 @@ export interface GoogleMapsPlaywrightProviderOptions {
   actionTimeout?: number;
   headless?: boolean;
   maxReviewsPerPlace?: number;
-  crawlerFactory?: (options: GoogleMapsCrawlerOptions) => Pick<GoogleMapsPlaywrightCrawler, 'crawl'>;
+  crawlerFactory?: (
+    options: GoogleMapsCrawlerOptions,
+  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl'>;
 }
 
 export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
   readonly providerCode = 'google_maps_playwright';
   private readonly crawlerOptions: GoogleMapsCrawlerOptions;
-  private readonly crawlerFactory: (options: GoogleMapsCrawlerOptions) => Pick<GoogleMapsPlaywrightCrawler, 'crawl'>;
+  private readonly crawlerFactory: (
+    options: GoogleMapsCrawlerOptions,
+  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl'>;
 
   constructor(options: GoogleMapsPlaywrightProviderOptions = {}) {
     this.crawlerOptions = {
@@ -30,7 +42,9 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
       headless: options.headless,
       maxReviewsPerPlace: options.maxReviewsPerPlace,
     };
-    this.crawlerFactory = options.crawlerFactory ?? ((crawlerOptions) => new GoogleMapsPlaywrightCrawler(crawlerOptions));
+    this.crawlerFactory =
+      options.crawlerFactory ??
+      ((crawlerOptions) => new GoogleMapsPlaywrightCrawler(crawlerOptions));
   }
 
   async validateConfiguration(): Promise<void> {
@@ -49,11 +63,14 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
       if (!place.name) continue;
 
       const externalId = place.url
-        ? extractPlaceIdFromUrl(place.url) ?? place.url
+        ? (extractPlaceIdFromUrl(place.url) ?? place.url)
         : buildStableExternalId(place.name, place.address, place.coordinates);
 
       const rating = parseRating(place.rating?.toString());
-      const reviewCount = place.reviewCount === undefined ? undefined : parseReviewCount(place.reviewCount.toString());
+      const reviewCount =
+        place.reviewCount === undefined
+          ? undefined
+          : parseReviewCount(place.reviewCount.toString());
 
       const record: SourceRestaurantRecord = {
         providerCode: this.providerCode,
@@ -65,7 +82,11 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
         city: input.city?.trim() || inferCity(input.location) || HCMC,
         district: input.district?.trim() || inferDistrict(input.location),
         countryCode: 'VN',
-        categories: place.category ? [normalizeCategorySlug(place.category)].filter((value): value is string => Boolean(value)) : undefined,
+        categories: place.category
+          ? [normalizeCategorySlug(place.category)].filter((value): value is string =>
+              Boolean(value),
+            )
+          : undefined,
         rating,
         reviewCount,
         coordinates: place.coordinates,
@@ -73,7 +94,11 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
         websiteUrl: place.website,
         priceLevel: place.priceLevel,
         openingHours: place.openingHours.length ? place.openingHours : undefined,
-        images: (place.images ?? []).map((image, index) => ({ ...image, sortOrder: index, isCover: index === 0 })),
+        images: (place.images ?? []).map((image, index) => ({
+          ...image,
+          sortOrder: index,
+          isCover: index === 0,
+        })),
         reviews: place.reviews.map((review) => ({
           externalReviewId: review.externalReviewId,
           rating: review.rating,
@@ -109,12 +134,11 @@ function buildQuery(input: DiscoveryInput): { query: string; location?: string }
   if (input.query?.trim()) {
     return {
       query: input.query.trim(),
-      location: input.location?.trim() || [input.district, input.city].filter(Boolean).join(', ') || HCMC,
+      location:
+        input.location?.trim() || [input.district, input.city].filter(Boolean).join(', ') || HCMC,
     };
   }
-  const category = input.category
-    ? mapCategoryToQuery(input.category)
-    : 'quán ăn';
+  const category = input.category ? mapCategoryToQuery(input.category) : 'quán ăn';
   const district = input.district?.trim();
   const location = [district, input.city].filter(Boolean).join(', ') || HCMC;
   return { query: category, location };
@@ -141,7 +165,10 @@ function inferDistrict(location: string | undefined): string | undefined {
 
 function inferCity(location: string | undefined): string | undefined {
   if (!location) return undefined;
-  const parts = location.split(',').map((part) => part.trim()).filter(Boolean);
+  const parts = location
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
   return parts.at(-1);
 }
 

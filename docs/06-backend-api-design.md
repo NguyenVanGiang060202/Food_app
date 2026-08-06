@@ -95,15 +95,15 @@ Offset pagination may be used only for bounded administrative views where it is 
 
 ## 5. Public API Domains
 
-| Domain | Responsibility |
-| --- | --- |
-| Health | Service health and readiness checks. |
-| Restaurants | Restaurant lists and details. |
-| Search | Structured and natural-language food discovery. |
-| Categories | Discoverable food and venue categories. |
-| Recommendations | Contextual and personalized recommendations. |
-| Users | Authentication, profiles, preferences, and saved places. |
-| Admin | Controlled operations for sources, crawls, pipeline state, and data review. |
+| Domain          | Responsibility                                                              |
+| --------------- | --------------------------------------------------------------------------- |
+| Health          | Service health and readiness checks.                                        |
+| Restaurants     | Restaurant lists and details.                                               |
+| Search          | Structured and natural-language food discovery.                             |
+| Categories      | Discoverable food and venue categories.                                     |
+| Recommendations | Contextual and personalized recommendations.                                |
+| Users           | Authentication, profiles, preferences, and saved places.                    |
+| Admin           | Controlled operations for sources, crawls, pipeline state, and data review. |
 
 ---
 
@@ -117,21 +117,21 @@ GET /api/v1/restaurants
 
 Supported initial filters:
 
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `query` | string | Restaurant or dish keyword. |
-| `category` | string | Category slug. |
-| `city` | string | City filter. |
-| `district` | string | District filter. |
-| `latitude` | number | User latitude; must be supplied with longitude. |
-| `longitude` | number | User longitude; must be supplied with latitude. |
-| `radiusMeters` | integer | Maximum nearby radius, subject to a server maximum. |
-| `minRating` | number | Minimum rating. |
-| `priceLevel` | integer | Controlled price level. |
-| `openNow` | boolean | Current opening-status filter when reliable hours exist. |
-| `sort` | enum | `relevance`, `distance`, `rating`, or `newest`. |
-| `limit` | integer | Bounded page size. |
-| `cursor` | string | Opaque pagination cursor. |
+| Parameter      | Type    | Meaning                                                  |
+| -------------- | ------- | -------------------------------------------------------- |
+| `query`        | string  | Restaurant or dish keyword.                              |
+| `category`     | string  | Category slug.                                           |
+| `city`         | string  | City filter.                                             |
+| `district`     | string  | District filter.                                         |
+| `latitude`     | number  | User latitude; must be supplied with longitude.          |
+| `longitude`    | number  | User longitude; must be supplied with latitude.          |
+| `radiusMeters` | integer | Maximum nearby radius, subject to a server maximum.      |
+| `minRating`    | number  | Minimum rating.                                          |
+| `priceLevel`   | integer | Controlled price level.                                  |
+| `openNow`      | boolean | Current opening-status filter when reliable hours exist. |
+| `sort`         | enum    | `relevance`, `distance`, `rating`, or `newest`.          |
+| `limit`        | integer | Bounded page size.                                       |
+| `cursor`       | string  | Opaque pagination cursor.                                |
 
 The response returns a lightweight restaurant summary with canonical name, location summary, categories, rating, review count, price level, cover image, and distance when location context was provided.
 
@@ -156,9 +156,7 @@ The detail response can include address, coordinates, categories, opening hours,
       "latitude": 10.7769,
       "longitude": 106.7009
     },
-    "categories": [
-      { "slug": "vietnamese", "name": "Vietnamese" }
-    ],
+    "categories": [{ "slug": "vietnamese", "name": "Vietnamese" }],
     "rating": 4.5,
     "reviewCount": 128,
     "priceLevel": 2,
@@ -280,16 +278,16 @@ The authentication mechanism, token lifetime, password policy, and social-login 
 
 Administrative endpoints require administrator authorization and must be audited.
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/v1/admin/data-sources` | View configured providers and status. |
-| `PATCH /api/v1/admin/data-sources/{id}` | Enable, disable, or update permitted provider settings. |
-| `POST /api/v1/admin/crawl-runs` | Submit a bounded manual crawl request. |
-| `GET /api/v1/admin/crawl-runs` | Inspect crawl history and metrics. |
-| `GET /api/v1/admin/processing-records` | Inspect pipeline status and failures. |
-| `POST /api/v1/admin/processing-records/{id}/retry` | Retry an eligible bounded processing task. |
-| `GET /api/v1/admin/restaurants/unresolved` | Review ambiguous matching or quality issues. |
-| `PATCH /api/v1/admin/restaurants/{id}` | Curate approved canonical fields. |
+| Endpoint                                           | Purpose                                                 |
+| -------------------------------------------------- | ------------------------------------------------------- |
+| `GET /api/v1/admin/data-sources`                   | View configured providers and status.                   |
+| `PATCH /api/v1/admin/data-sources/{id}`            | Enable, disable, or update permitted provider settings. |
+| `POST /api/v1/admin/crawl-runs`                    | Submit a bounded manual crawl request.                  |
+| `GET /api/v1/admin/crawl-runs`                     | Inspect crawl history and metrics.                      |
+| `GET /api/v1/admin/processing-records`             | Inspect pipeline status and failures.                   |
+| `POST /api/v1/admin/processing-records/{id}/retry` | Retry an eligible bounded processing task.              |
+| `GET /api/v1/admin/restaurants/unresolved`         | Review ambiguous matching or quality issues.            |
+| `PATCH /api/v1/admin/restaurants/{id}`             | Curate approved canonical fields.                       |
 
 Manual crawl requests must be validated, rate-limited, bounded by target, and placed on the queue. They must never execute browser automation in the API request process.
 
@@ -317,16 +315,16 @@ Standard error response:
 }
 ```
 
-| Status | Code example | Use |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | Invalid query or request body. |
-| 401 | `UNAUTHENTICATED` | Authentication is required or invalid. |
-| 403 | `FORBIDDEN` | Authenticated actor lacks permission. |
-| 404 | `NOT_FOUND` | Public resource does not exist or is unavailable. |
-| 409 | `CONFLICT` | Request conflicts with current resource state. |
-| 429 | `RATE_LIMITED` | API request limit exceeded. |
-| 500 | `INTERNAL_ERROR` | Unexpected server error; details remain internal. |
-| 503 | `SERVICE_UNAVAILABLE` | Temporary dependency or maintenance failure. |
+| Status | Code example          | Use                                               |
+| ------ | --------------------- | ------------------------------------------------- |
+| 400    | `VALIDATION_ERROR`    | Invalid query or request body.                    |
+| 401    | `UNAUTHENTICATED`     | Authentication is required or invalid.            |
+| 403    | `FORBIDDEN`           | Authenticated actor lacks permission.             |
+| 404    | `NOT_FOUND`           | Public resource does not exist or is unavailable. |
+| 409    | `CONFLICT`            | Request conflicts with current resource state.    |
+| 429    | `RATE_LIMITED`        | API request limit exceeded.                       |
+| 500    | `INTERNAL_ERROR`      | Unexpected server error; details remain internal. |
+| 503    | `SERVICE_UNAVAILABLE` | Temporary dependency or maintenance failure.      |
 
 ---
 

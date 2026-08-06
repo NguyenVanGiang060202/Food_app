@@ -10,5 +10,14 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { SavedModule } from './modules/saved/saved.module';
 
-@Module({ imports: [DatabaseModule, CategoriesModule, AdminModule, AuthModule, SavedModule], controllers: [HealthController, RestaurantsController, SearchController, RecommendationsController], providers: [RestaurantsService, RestaurantsRepository] })
+@Module({
+  imports: [DatabaseModule, CategoriesModule, AdminModule, AuthModule, SavedModule],
+  controllers: [
+    HealthController,
+    RestaurantsController,
+    SearchController,
+    RecommendationsController,
+  ],
+  providers: [RestaurantsService, RestaurantsRepository],
+})
 export class AppModule {}

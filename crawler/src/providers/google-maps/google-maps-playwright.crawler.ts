@@ -1,7 +1,17 @@
 import type { Page, Locator } from 'playwright';
 import { PlaywrightBrowser } from '../../browser/playwright-browser';
 import { SELECTORS } from './selectors';
-import { isLikelyRestaurantName, normalizeImages, parseRating, parseReviewCount, parseReviewDate, inferLanguageCode, parseCoordinatesFromUrl, type ParsedPlace, type ParsedReview } from './google-maps.parser';
+import {
+  isLikelyRestaurantName,
+  normalizeImages,
+  parseRating,
+  parseReviewCount,
+  parseReviewDate,
+  inferLanguageCode,
+  parseCoordinatesFromUrl,
+  type ParsedPlace,
+  type ParsedReview,
+} from './google-maps.parser';
 
 export interface GoogleMapsCrawlTarget {
   query: string;
@@ -62,12 +72,25 @@ export class GoogleMapsPlaywrightCrawler {
       const seenUrls = new Set<string>();
       const results: ParsedPlace[] = [];
 
-      console.error(JSON.stringify({ event: 'crawler_phase', phase: 'navigate', query: target.query, location: target.location }));
+      console.error(
+        JSON.stringify({
+          event: 'crawler_phase',
+          phase: 'navigate',
+          query: target.query,
+          location: target.location,
+        }),
+      );
       await this.navigateToSearch(page, target);
       await this.waitForResults(page);
-      console.error(JSON.stringify({ event: 'crawler_phase', phase: 'extract', query: target.query }));
+      console.error(
+        JSON.stringify({ event: 'crawler_phase', phase: 'extract', query: target.query }),
+      );
 
-      for (let attempt = 0; attempt < this.maxScrollAttempts && results.length < this.maxResults; attempt++) {
+      for (
+        let attempt = 0;
+        attempt < this.maxScrollAttempts && results.length < this.maxResults;
+        attempt++
+      ) {
         const rawItems = await this.extractRawListItems(page, seenUrls);
         for (const item of rawItems) {
           if (results.length >= this.maxResults) break;
@@ -77,12 +100,14 @@ export class GoogleMapsPlaywrightCrawler {
               await this.enrichWithDetails(page, place, item.url);
             }
             results.push(place);
-            console.error(JSON.stringify({
-              event: 'crawler_place',
-              index: results.length,
-              maxResults: this.maxResults,
-              name: place.name,
-            }));
+            console.error(
+              JSON.stringify({
+                event: 'crawler_place',
+                index: results.length,
+                maxResults: this.maxResults,
+                name: place.name,
+              }),
+            );
           }
         }
         if (rawItems.length === 0) break;
@@ -97,28 +122,36 @@ export class GoogleMapsPlaywrightCrawler {
       // outside that operation so no Playwright resource is left alive on failure.
       if (page) {
         await page.close().catch((error) => {
-          console.error(JSON.stringify({
-            event: 'crawler_cleanup_error',
-            resource: 'page',
-            message: error instanceof Error ? error.message : String(error),
-          }));
+          console.error(
+            JSON.stringify({
+              event: 'crawler_cleanup_error',
+              resource: 'page',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
         });
       }
       await this.browser.close().catch((error) => {
-        console.error(JSON.stringify({
-          event: 'crawler_cleanup_error',
-          resource: 'browser',
-          message: error instanceof Error ? error.message : String(error),
-        }));
+        console.error(
+          JSON.stringify({
+            event: 'crawler_cleanup_error',
+            resource: 'browser',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
       });
     }
   }
 
-  private async enrichWithDetails(page: Page, place: ParsedPlace, url: string | undefined): Promise<void> {
+  private async enrichWithDetails(
+    page: Page,
+    place: ParsedPlace,
+    url: string | undefined,
+  ): Promise<void> {
     if (!url) return;
     try {
       const link = page.locator(`a[href="${url.replace(/"/g, '\\"')}"]`);
-      if (await link.count() === 0) return;
+      if ((await link.count()) === 0) return;
 
       await link.first().click();
       await page.waitForTimeout(2000);
@@ -138,52 +171,68 @@ export class GoogleMapsPlaywrightCrawler {
       await this.closeDetailPanel(page);
       await page.waitForTimeout(500);
     } catch (error) {
-      console.error(JSON.stringify({
-        event: 'detail_extraction_error',
-        name: place.name,
-        message: error instanceof Error ? error.message : 'Failed to extract details',
-      }));
+      console.error(
+        JSON.stringify({
+          event: 'detail_extraction_error',
+          name: place.name,
+          message: error instanceof Error ? error.message : 'Failed to extract details',
+        }),
+      );
     }
   }
 
   private async extractReviewsFromDetail(page: Page, placeName: string): Promise<ParsedReview[]> {
     try {
       const reviewButton = page.locator(SELECTORS.detailReviewsButton).first();
-      if (await reviewButton.count() === 0 || !(await reviewButton.isVisible({ timeout: 2_000 }))) {
+      if (
+        (await reviewButton.count()) === 0 ||
+        !(await reviewButton.isVisible({ timeout: 2_000 }))
+      ) {
         return [];
       }
       await reviewButton.click();
       await page.waitForTimeout(1_500);
 
       const reviewPanel = page.locator(SELECTORS.reviewContainer).first();
-      if (await reviewPanel.count() === 0) return [];
+      if ((await reviewPanel.count()) === 0) return [];
 
-      const reviews = await page.evaluate(({ selector, limit }) => {
-        const containers = Array.from(document.querySelectorAll<HTMLElement>(selector));
-        return containers.slice(0, limit).map((container, index) => {
-          const id = container.getAttribute('data-review-id');
-          const content = container.querySelector<HTMLElement>('.wiI7pd, [data-expandable-section]')?.textContent?.trim();
-          const ratingElement = container.querySelector<HTMLElement>('[aria-label*="star"], [aria-label*="sao"], [role="img"]');
-          const ratingText = ratingElement?.getAttribute('aria-label') ?? '';
-          const dateText = (() => {
-            const preferred = container.querySelector<HTMLElement>('span.rsqaWe');
-            if (preferred?.textContent?.trim()) return preferred.textContent.trim();
-            const dated = container.querySelector<HTMLElement>('span[class*="date"]');
-            if (dated?.textContent?.trim()) return dated.textContent.trim();
-            const du9 = container.querySelector<HTMLElement>('.DU9Pgb');
-            if (du9) {
-              const clone = du9.cloneNode(true) as HTMLElement;
-              clone.querySelectorAll('.google-symbols, .kvMYJc, [role="img"]').forEach((node) => node.remove());
-              return clone.textContent?.trim() || undefined;
-            }
-            return undefined;
-          })();
-          const date = dateText;
-          const author = container.querySelector<HTMLElement>('.d4r55, .TSUbDb')?.textContent?.trim() ?? '';
-          const stableId = id || `${author}|${ratingText}|${content ?? ''}|${date ?? ''}|${index}`;
-          return { externalReviewId: stableId, ratingText, content, date };
-        });
-      }, { selector: SELECTORS.reviewContainer, limit: this.maxReviewsPerPlace });
+      const reviews = await page.evaluate(
+        ({ selector, limit }) => {
+          const containers = Array.from(document.querySelectorAll<HTMLElement>(selector));
+          return containers.slice(0, limit).map((container, index) => {
+            const id = container.getAttribute('data-review-id');
+            const content = container
+              .querySelector<HTMLElement>('.wiI7pd, [data-expandable-section]')
+              ?.textContent?.trim();
+            const ratingElement = container.querySelector<HTMLElement>(
+              '[aria-label*="star"], [aria-label*="sao"], [role="img"]',
+            );
+            const ratingText = ratingElement?.getAttribute('aria-label') ?? '';
+            const dateText = (() => {
+              const preferred = container.querySelector<HTMLElement>('span.rsqaWe');
+              if (preferred?.textContent?.trim()) return preferred.textContent.trim();
+              const dated = container.querySelector<HTMLElement>('span[class*="date"]');
+              if (dated?.textContent?.trim()) return dated.textContent.trim();
+              const du9 = container.querySelector<HTMLElement>('.DU9Pgb');
+              if (du9) {
+                const clone = du9.cloneNode(true) as HTMLElement;
+                clone
+                  .querySelectorAll('.google-symbols, .kvMYJc, [role="img"]')
+                  .forEach((node) => node.remove());
+                return clone.textContent?.trim() || undefined;
+              }
+              return undefined;
+            })();
+            const date = dateText;
+            const author =
+              container.querySelector<HTMLElement>('.d4r55, .TSUbDb')?.textContent?.trim() ?? '';
+            const stableId =
+              id || `${author}|${ratingText}|${content ?? ''}|${date ?? ''}|${index}`;
+            return { externalReviewId: stableId, ratingText, content, date };
+          });
+        },
+        { selector: SELECTORS.reviewContainer, limit: this.maxReviewsPerPlace },
+      );
 
       return reviews
         .map((review) => ({
@@ -195,11 +244,13 @@ export class GoogleMapsPlaywrightCrawler {
         }))
         .filter((review) => review.content || review.rating !== undefined);
     } catch (error) {
-      console.error(JSON.stringify({
-        event: 'review_extraction_error',
-        name: placeName,
-        message: error instanceof Error ? error.message : 'Failed to extract reviews',
-      }));
+      console.error(
+        JSON.stringify({
+          event: 'review_extraction_error',
+          name: placeName,
+          message: error instanceof Error ? error.message : 'Failed to extract reviews',
+        }),
+      );
       return [];
     } finally {
       await this.closeReviewPanel(page);
@@ -224,88 +275,124 @@ export class GoogleMapsPlaywrightCrawler {
     images: Array<{ url: string; altText?: string }>;
   }> {
     try {
-      return await page.evaluate((selectors: Record<string, string>) => {
-        const result: {
-          reviewCount: number | undefined;
-          phone: string | undefined;
-          website: string | undefined;
-          address: string | undefined;
-          priceLevel: number | undefined;
-          images: Array<{ url: string; altText?: string }>;
-        } = { reviewCount: undefined, phone: undefined, website: undefined, address: undefined, priceLevel: undefined, images: [] };
-
-        const parseCount = (raw: string | null | undefined): number | undefined => {
-          if (!raw) return undefined;
-          const cleaned = raw.trim();
-          if (!cleaned) return undefined;
-          const toCount = (group: string): number | undefined => {
-            const digits = group.replace(/[^0-9]/g, '');
-            if (!digits) return undefined;
-            const val = Number(digits);
-            return Number.isFinite(val) && val >= 0 ? val : undefined;
+      return await page.evaluate(
+        (selectors: Record<string, string>) => {
+          const result: {
+            reviewCount: number | undefined;
+            phone: string | undefined;
+            website: string | undefined;
+            address: string | undefined;
+            priceLevel: number | undefined;
+            images: Array<{ url: string; altText?: string }>;
+          } = {
+            reviewCount: undefined,
+            phone: undefined,
+            website: undefined,
+            address: undefined,
+            priceLevel: undefined,
+            images: [],
           };
-          const parenthesized = cleaned.match(/[([]\s*(\d[\d.,]*)\s*[)\]]/);
-          if (parenthesized) return toCount(parenthesized[1]);
-          const keywordMatch = cleaned.match(/(\d[\d.,]*)\s*(?:reviews?|đánh giá|review|avis)/i);
-          if (keywordMatch) return toCount(keywordMatch[1]);
-          const groups = cleaned.match(/\d[\d.,]*/g);
-          if (!groups || groups.length === 0) return undefined;
-          const last = groups[groups.length - 1];
-          if (groups.length === 1 && /^\d[.,]\d$/.test(last) && Number(last.replace(',', '.')) <= 5) return undefined;
-          return toCount(last);
-        };
 
-        const reviewBtn = document.querySelector<HTMLElement>(selectors.detailReviewCount);
-        if (reviewBtn) {
-          const text = reviewBtn.textContent?.trim() || reviewBtn.getAttribute('aria-label') || '';
-          result.reviewCount = parseCount(text);
-        }
-        if (result.reviewCount === undefined) {
-          const reviewSpan = document.querySelector<HTMLElement>(selectors.detailReviewCountAlt);
-          if (reviewSpan) {
-            const text = reviewSpan.textContent?.trim() || reviewSpan.getAttribute('aria-label') || '';
+          const parseCount = (raw: string | null | undefined): number | undefined => {
+            if (!raw) return undefined;
+            const cleaned = raw.trim();
+            if (!cleaned) return undefined;
+            const toCount = (group: string): number | undefined => {
+              const digits = group.replace(/[^0-9]/g, '');
+              if (!digits) return undefined;
+              const val = Number(digits);
+              return Number.isFinite(val) && val >= 0 ? val : undefined;
+            };
+            const parenthesized = cleaned.match(/[([]\s*(\d[\d.,]*)\s*[)\]]/);
+            if (parenthesized) return toCount(parenthesized[1]);
+            const keywordMatch = cleaned.match(/(\d[\d.,]*)\s*(?:reviews?|đánh giá|review|avis)/i);
+            if (keywordMatch) return toCount(keywordMatch[1]);
+            const groups = cleaned.match(/\d[\d.,]*/g);
+            if (!groups || groups.length === 0) return undefined;
+            const last = groups[groups.length - 1];
+            if (
+              groups.length === 1 &&
+              /^\d[.,]\d$/.test(last) &&
+              Number(last.replace(',', '.')) <= 5
+            )
+              return undefined;
+            return toCount(last);
+          };
+
+          const reviewBtn = document.querySelector<HTMLElement>(selectors.detailReviewCount);
+          if (reviewBtn) {
+            const text =
+              reviewBtn.textContent?.trim() || reviewBtn.getAttribute('aria-label') || '';
             result.reviewCount = parseCount(text);
           }
-        }
+          if (result.reviewCount === undefined) {
+            const reviewSpan = document.querySelector<HTMLElement>(selectors.detailReviewCountAlt);
+            if (reviewSpan) {
+              const text =
+                reviewSpan.textContent?.trim() || reviewSpan.getAttribute('aria-label') || '';
+              result.reviewCount = parseCount(text);
+            }
+          }
 
-        const phoneBtn = document.querySelector<HTMLElement>(selectors.detailPhone);
-        if (phoneBtn) {
-          const telHref = phoneBtn.tagName === 'A' ? (phoneBtn as HTMLAnchorElement).href : undefined;
-          const telFromHref = telHref?.match(/tel:([+\d\s()-]+)/i)?.[1];
-          const cleaned = (phoneBtn.textContent ?? '').replace(/[^\d+\s]/g, ' ').replace(/\s+/g, ' ').trim();
-          result.phone = telFromHref?.trim() || cleaned || undefined;
-        }
+          const phoneBtn = document.querySelector<HTMLElement>(selectors.detailPhone);
+          if (phoneBtn) {
+            const telHref =
+              phoneBtn.tagName === 'A' ? (phoneBtn as HTMLAnchorElement).href : undefined;
+            const telFromHref = telHref?.match(/tel:([+\d\s()-]+)/i)?.[1];
+            const cleaned = (phoneBtn.textContent ?? '')
+              .replace(/[^\d+\s]/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            result.phone = telFromHref?.trim() || cleaned || undefined;
+          }
 
-        const websiteLink = Array.from(document.querySelectorAll<HTMLAnchorElement>(selectors.detailWebsite))
-          .find((link) => /^https?:\/\//i.test(link.href) && !link.href.includes('google.com'));
-        if (websiteLink?.href) result.website = websiteLink.href;
+          const websiteLink = Array.from(
+            document.querySelectorAll<HTMLAnchorElement>(selectors.detailWebsite),
+          ).find((link) => /^https?:\/\//i.test(link.href) && !link.href.includes('google.com'));
+          if (websiteLink?.href) result.website = websiteLink.href;
 
-        const addressBtn = document.querySelector<HTMLElement>(selectors.detailAddress);
-        if (addressBtn) {
-          const addrDiv = addressBtn.querySelector('div.fontBodyMedium');
-          result.address = addrDiv?.textContent?.trim() || addressBtn.textContent?.trim() || undefined;
-        }
+          const addressBtn = document.querySelector<HTMLElement>(selectors.detailAddress);
+          if (addressBtn) {
+            const addrDiv = addressBtn.querySelector('div.fontBodyMedium');
+            result.address =
+              addrDiv?.textContent?.trim() || addressBtn.textContent?.trim() || undefined;
+          }
 
-        // Price level: Google renders a '$' run next to the category in the
-        // place-info section. Scope the scan to the section that holds the
-        // phone/address rows so review text or ads cannot pollute it.
-        const infoAnchor = (phoneBtn?.closest('div[role="main"]') ?? addressBtn?.closest('div[role="main"]')) as HTMLElement | null;
-        const infoRoot = infoAnchor ?? document.body;
-        const dollarRuns = Array.from(infoRoot.querySelectorAll<HTMLElement>('span'))
-          .map((el) => el.textContent?.replace(/\u00a0/g, ' ').trim() ?? '')
-          .filter((text) => /^\${1,4}$/.test(text))
-          .map((text) => text.length);
-        result.priceLevel = dollarRuns.length ? Math.max(...dollarRuns) : undefined;
+          // Price level: Google renders a '$' run next to the category in the
+          // place-info section. Scope the scan to the section that holds the
+          // phone/address rows so review text or ads cannot pollute it.
+          const infoAnchor = (phoneBtn?.closest('div[role="main"]') ??
+            addressBtn?.closest('div[role="main"]')) as HTMLElement | null;
+          const infoRoot = infoAnchor ?? document.body;
+          const dollarRuns = Array.from(infoRoot.querySelectorAll<HTMLElement>('span'))
+            .map((el) => el.textContent?.replace(/\u00a0/g, ' ').trim() ?? '')
+            .filter((text) => /^\${1,4}$/.test(text))
+            .map((text) => text.length);
+          result.priceLevel = dollarRuns.length ? Math.max(...dollarRuns) : undefined;
 
-        result.images = Array.from(document.querySelectorAll<HTMLImageElement>('img[src^="http"]'))
-          .map((image) => ({ url: image.currentSrc || image.src, altText: image.alt || undefined }))
-          .filter((image) => image.url && !image.url.includes('googleusercontent.com/googlelogo'))
-          .slice(0, 10);
+          result.images = Array.from(
+            document.querySelectorAll<HTMLImageElement>('img[src^="http"]'),
+          )
+            .map((image) => ({
+              url: image.currentSrc || image.src,
+              altText: image.alt || undefined,
+            }))
+            .filter((image) => image.url && !image.url.includes('googleusercontent.com/googlelogo'))
+            .slice(0, 10);
 
-        return result;
-      }, SELECTORS as unknown as Record<string, string>);
+          return result;
+        },
+        SELECTORS as unknown as Record<string, string>,
+      );
     } catch {
-      return { reviewCount: undefined, phone: undefined, website: undefined, address: undefined, priceLevel: undefined, images: [] };
+      return {
+        reviewCount: undefined,
+        phone: undefined,
+        website: undefined,
+        address: undefined,
+        priceLevel: undefined,
+        images: [],
+      };
     }
   }
 
@@ -327,9 +414,7 @@ export class GoogleMapsPlaywrightCrawler {
   }
 
   private async navigateToSearch(page: Page, target: GoogleMapsCrawlTarget): Promise<void> {
-    const searchQuery = target.location
-      ? `${target.query} ${target.location}`
-      : target.query;
+    const searchQuery = target.location ? `${target.query} ${target.location}` : target.query;
     const encoded = encodeURIComponent(searchQuery);
     await page.goto(`https://www.google.com/maps/search/${encoded}/`, {
       waitUntil: 'domcontentloaded',
@@ -343,7 +428,7 @@ export class GoogleMapsPlaywrightCrawler {
   private async dismissCookieConsent(page: Page): Promise<void> {
     try {
       const acceptButton = page.locator(
-        'button:has-text("Accept all"), button:has-text("Tôi đồng ý"), button:has-text("Accept"), button:has-text("Đồng ý"), div[aria-label*="cookie"] button, form[action*="consent"] button'
+        'button:has-text("Accept all"), button:has-text("Tôi đồng ý"), button:has-text("Accept"), button:has-text("Đồng ý"), div[aria-label*="cookie"] button, form[action*="consent"] button',
       );
       if (await acceptButton.isVisible({ timeout: 3000 })) {
         await acceptButton.click();
@@ -359,10 +444,13 @@ export class GoogleMapsPlaywrightCrawler {
       await page.waitForSelector(SELECTORS.resultList, { timeout: 20_000 });
       await page.waitForTimeout(3000);
     } catch {
-      console.error(JSON.stringify({
-        event: 'crawler_warn',
-        message: 'Google Maps result list did not appear within timeout. Proceeding with current state.',
-      }));
+      console.error(
+        JSON.stringify({
+          event: 'crawler_warn',
+          message:
+            'Google Maps result list did not appear within timeout. Proceeding with current state.',
+        }),
+      );
     }
   }
 
@@ -394,13 +482,26 @@ export class GoogleMapsPlaywrightCrawler {
 
             const ratingEl = container.querySelector<HTMLElement>('.MW4etd');
             const ratingText = ratingEl?.textContent?.trim() || undefined;
-            const reviewText = Array.from(container.querySelectorAll<HTMLElement>('.UY7F9, [aria-label*="reviews" i], [aria-label*="đánh giá" i], [aria-label*="review" i]'))
-              .map((element) => element.getAttribute('aria-label') || element.textContent?.trim() || '')
+            const reviewText = Array.from(
+              container.querySelectorAll<HTMLElement>(
+                '.UY7F9, [aria-label*="reviews" i], [aria-label*="đánh giá" i], [aria-label*="review" i]',
+              ),
+            )
+              .map(
+                (element) =>
+                  element.getAttribute('aria-label') || element.textContent?.trim() || '',
+              )
               .find((text) => /\d/.test(text));
-            const images = Array.from(container.querySelectorAll<HTMLImageElement>('img[src^="http"]'))
-              .map((image) => ({ url: image.currentSrc || image.src, altText: image.alt || undefined }));
+            const images = Array.from(
+              container.querySelectorAll<HTMLImageElement>('img[src^="http"]'),
+            ).map((image) => ({
+              url: image.currentSrc || image.src,
+              altText: image.alt || undefined,
+            }));
 
-            const categoryButton = container.querySelector<HTMLElement>('button[jsaction*="category" i], [aria-label*="category" i], [aria-label*="loại hình" i]');
+            const categoryButton = container.querySelector<HTMLElement>(
+              'button[jsaction*="category" i], [aria-label*="category" i], [aria-label*="loại hình" i]',
+            );
             const infoW4 = container.querySelectorAll<HTMLElement>('.W4Efsd .W4Efsd');
             let address: string | undefined;
             let category: string | undefined = categoryButton?.textContent?.trim() || undefined;
@@ -408,7 +509,12 @@ export class GoogleMapsPlaywrightCrawler {
               const directChildSpans = w4.querySelectorAll(':scope > span');
               if (directChildSpans.length >= 2) {
                 const firstText = directChildSpans[0]?.textContent?.trim();
-                if (firstText && !firstText.includes('·') && !/^(Open|Closed)/i.test(firstText) && firstText.length < 50) {
+                if (
+                  firstText &&
+                  !firstText.includes('·') &&
+                  !/^(Open|Closed)/i.test(firstText) &&
+                  firstText.length < 50
+                ) {
                   category = firstText;
                 }
                 const lastDirectSpan = directChildSpans[directChildSpans.length - 1];
@@ -439,10 +545,12 @@ export class GoogleMapsPlaywrightCrawler {
       }
       return newItems;
     } catch (error) {
-      console.error(JSON.stringify({
-        event: 'crawler_extraction_error',
-        message: error instanceof Error ? error.message : 'Failed to extract results',
-      }));
+      console.error(
+        JSON.stringify({
+          event: 'crawler_extraction_error',
+          message: error instanceof Error ? error.message : 'Failed to extract results',
+        }),
+      );
       return [];
     }
   }
@@ -474,7 +582,9 @@ export class GoogleMapsPlaywrightCrawler {
           panel.scrollTop = panel.scrollHeight;
           return;
         }
-        const scrollable = document.querySelector('[style*="overflow"][style*="auto"], [style*="overflow"][style*="scroll"]');
+        const scrollable = document.querySelector(
+          '[style*="overflow"][style*="auto"], [style*="overflow"][style*="scroll"]',
+        );
         if (scrollable) {
           scrollable.scrollTop = scrollable.scrollHeight;
           return;
@@ -482,10 +592,12 @@ export class GoogleMapsPlaywrightCrawler {
         window.scrollBy(0, 500);
       });
     } catch (error) {
-      console.error(JSON.stringify({
-        event: 'crawler_scroll_error',
-        message: error instanceof Error ? error.message : 'Failed to scroll results',
-      }));
+      console.error(
+        JSON.stringify({
+          event: 'crawler_scroll_error',
+          message: error instanceof Error ? error.message : 'Failed to scroll results',
+        }),
+      );
     }
   }
 }

@@ -10,16 +10,16 @@ The frontend is a presentation and interaction layer. It must not crawl sources,
 
 ## 2. Technology Baseline
 
-| Area | Technology | Role |
-| --- | --- | --- |
-| Framework | React | Component-based web UI. |
-| Language | TypeScript | Type-safe UI and API contracts. |
-| Build tooling | Vite | Local development server and production builds. |
-| Styling | Tailwind CSS | Responsive styling and reusable design tokens. |
-| Map rendering | Leaflet | Interactive restaurant map and location features. |
-| API transport | Fetch-based client or approved HTTP wrapper | Calls the REST API. |
-| Server-state cache | React Query / TanStack Query | Fetching, caching, invalidation, and async states. |
-| Client state | React state/context; a small store only when needed | UI-only state such as filters and map state. |
+| Area               | Technology                                          | Role                                               |
+| ------------------ | --------------------------------------------------- | -------------------------------------------------- |
+| Framework          | React                                               | Component-based web UI.                            |
+| Language           | TypeScript                                          | Type-safe UI and API contracts.                    |
+| Build tooling      | Vite                                                | Local development server and production builds.    |
+| Styling            | Tailwind CSS                                        | Responsive styling and reusable design tokens.     |
+| Map rendering      | Leaflet                                             | Interactive restaurant map and location features.  |
+| API transport      | Fetch-based client or approved HTTP wrapper         | Calls the REST API.                                |
+| Server-state cache | React Query / TanStack Query                        | Fetching, caching, invalidation, and async states. |
+| Client state       | React state/context; a small store only when needed | UI-only state such as filters and map state.       |
 
 The final dependency list must be recorded in the frontend package manifest. New libraries require a clear purpose and must not duplicate an existing capability.
 
@@ -78,16 +78,16 @@ frontend/
 
 Initial public routes:
 
-| Route | Page | Purpose |
-| --- | --- | --- |
-| `/` | Home | Entry point, search prompt, featured discovery. |
-| `/search` | Search results | Filtered list and map view for restaurant discovery. |
-| `/restaurants/:restaurantId` | Restaurant detail | Full public restaurant information. |
-| `/categories/:slug` | Category discovery | Restaurants for a category. |
-| `/recommendations` | Recommendations | Contextual recommendation flow and results. |
-| `/login` | Authentication | Sign-in flow when authentication is implemented. |
-| `/profile` | User profile | Preferences and saved restaurants; authenticated. |
-| `/admin/*` | Admin area | Protected operational and curation interfaces. |
+| Route                        | Page               | Purpose                                              |
+| ---------------------------- | ------------------ | ---------------------------------------------------- |
+| `/`                          | Home               | Entry point, search prompt, featured discovery.      |
+| `/search`                    | Search results     | Filtered list and map view for restaurant discovery. |
+| `/restaurants/:restaurantId` | Restaurant detail  | Full public restaurant information.                  |
+| `/categories/:slug`          | Category discovery | Restaurants for a category.                          |
+| `/recommendations`           | Recommendations    | Contextual recommendation flow and results.          |
+| `/login`                     | Authentication     | Sign-in flow when authentication is implemented.     |
+| `/profile`                   | User profile       | Preferences and saved restaurants; authenticated.    |
+| `/admin/*`                   | Admin area         | Protected operational and curation interfaces.       |
 
 Route parameters and query strings are validated before use. Search state that should be shareable or bookmarkable belongs in the URL, such as `query`, category, location context, sort order, and filter values.
 
@@ -252,13 +252,13 @@ Accessibility is part of feature acceptance criteria, not a final visual-polish 
 
 Every data-backed screen must define:
 
-| State | Required behavior |
-| --- | --- |
-| Loading | Show a meaningful skeleton or progress state without blocking unrelated UI. |
-| Empty | Explain that no data matched and offer a useful next action. |
-| Error | Show a safe, human-readable message and a retry action where appropriate. |
-| Partial data | Render known values and label or hide unavailable fields appropriately. |
-| Unauthorized | Explain sign-in requirements without exposing protected data. |
+| State        | Required behavior                                                           |
+| ------------ | --------------------------------------------------------------------------- |
+| Loading      | Show a meaningful skeleton or progress state without blocking unrelated UI. |
+| Empty        | Explain that no data matched and offer a useful next action.                |
+| Error        | Show a safe, human-readable message and a retry action where appropriate.   |
+| Partial data | Render known values and label or hide unavailable fields appropriately.     |
+| Unauthorized | Explain sign-in requirements without exposing protected data.               |
 
 Errors from the backend should map to user-friendly messages while preserving a request ID for support and diagnostics.
 
@@ -288,12 +288,12 @@ Errors from the backend should map to user-friendly messages while preserving a 
 
 ## 16. Testing Strategy
 
-| Test type | Scope |
-| --- | --- |
-| Unit tests | Formatters, validators, pure UI logic, and API parameter builders. |
-| Component tests | Components, forms, loading states, accessibility behavior, and user interactions. |
-| Integration tests | Feature flows with mocked API responses and query cache behavior. |
-| End-to-end tests | Core search, filter, detail, and authentication flows against a test environment. |
+| Test type         | Scope                                                                             |
+| ----------------- | --------------------------------------------------------------------------------- |
+| Unit tests        | Formatters, validators, pure UI logic, and API parameter builders.                |
+| Component tests   | Components, forms, loading states, accessibility behavior, and user interactions. |
+| Integration tests | Feature flows with mocked API responses and query cache behavior.                 |
+| End-to-end tests  | Core search, filter, detail, and authentication flows against a test environment. |
 
 Tests should use accessible queries and assert visible behavior rather than implementation details. Mocked API responses must follow the published API contract.
 

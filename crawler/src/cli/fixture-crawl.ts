@@ -3,5 +3,62 @@ import { normalizeSourceRecord } from '../pipeline/normalizer';
 import { validateSourceRecord } from '../validation/source-record.validation';
 import { CanonicalUpsertPipeline } from '../pipeline/canonical-upsert.pipeline';
 
-async function main() { const provider = new FixtureProvider(); await provider.validateConfiguration(); const pipeline = new CanonicalUpsertPipeline(); const target = { city: process.env.CRAWL_CITY, district: process.env.CRAWL_DISTRICT, category: process.env.CRAWL_CATEGORY, limit: Number(process.env.CRAWL_LIMIT ?? 50) }; let runId: string | undefined; let found = 0; let processed = 0; try { await pipeline.ensureLocalFixtureSource(); runId = await pipeline.createCrawlRun(provider.providerCode, target); for await (const record of provider.discover({ city: target.city, district: target.district, category: target.category, limit: target.limit })) { found += 1; try { validateSourceRecord(record); await pipeline.process(runId, normalizeSourceRecord(record)); processed += 1; } catch (error) { console.error(JSON.stringify({ event: 'crawl_record_failed', externalId: record.externalId, message: error instanceof Error ? error.message : 'Unknown error' })); } } await pipeline.finishCrawlRun(runId, found, processed); console.log(JSON.stringify({ event: 'crawl_completed', crawlRunId: runId, recordsFound: found, recordsProcessed: processed })); } catch (error) { if (runId) { await pipeline.failCrawlRun(runId, found, processed, error); } throw error; } finally { await pipeline.close(); } }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+async function main() {
+  const provider = new FixtureProvider();
+  await provider.validateConfiguration();
+  const pipeline = new CanonicalUpsertPipeline();
+  const target = {
+    city: process.env.CRAWL_CITY,
+    district: process.env.CRAWL_DISTRICT,
+    category: process.env.CRAWL_CATEGORY,
+    limit: Number(process.env.CRAWL_LIMIT ?? 50),
+  };
+  let runId: string | undefined;
+  let found = 0;
+  let processed = 0;
+  try {
+    await pipeline.ensureLocalFixtureSource();
+    runId = await pipeline.createCrawlRun(provider.providerCode, target);
+    for await (const record of provider.discover({
+      city: target.city,
+      district: target.district,
+      category: target.category,
+      limit: target.limit,
+    })) {
+      found += 1;
+      try {
+        validateSourceRecord(record);
+        await pipeline.process(runId, normalizeSourceRecord(record));
+        processed += 1;
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: 'crawl_record_failed',
+            externalId: record.externalId,
+            message: error instanceof Error ? error.message : 'Unknown error',
+          }),
+        );
+      }
+    }
+    await pipeline.finishCrawlRun(runId, found, processed);
+    console.log(
+      JSON.stringify({
+        event: 'crawl_completed',
+        crawlRunId: runId,
+        recordsFound: found,
+        recordsProcessed: processed,
+      }),
+    );
+  } catch (error) {
+    if (runId) {
+      await pipeline.failCrawlRun(runId, found, processed, error);
+    }
+    throw error;
+  } finally {
+    await pipeline.close();
+  }
+}
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

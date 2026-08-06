@@ -2,11 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -24,10 +20,7 @@
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] }
   },
-  "include": [
-    "src",
-    "test"
-  ],
+  "include": ["src", "test"],
   "exclude": ["src/routes", "src/components/ai-elements", "src/components/ui"],
   "references": []
 }

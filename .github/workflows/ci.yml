@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Use Node.js 22
         uses: actions/setup-node@v4
@@ -60,7 +60,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build database image
         run: docker build --file database/docker/Dockerfile --tag food-app-postgres:${{ github.sha }} .
@@ -81,8 +81,15 @@ jobs:
             fi
             sleep 2
           done
+          # Wait for init scripts to complete (check for last migration table/index)
+          for attempt in {1..30}; do
+            if docker exec food-app-postgres-ci psql -U food_app -d food_app -tAc "SELECT 1 FROM pg_indexes WHERE indexname = 'restaurant_image_source_url_uidx'" 2>/dev/null | grep -q 1; then
+              break
+            fi
+            sleep 2
+          done
           docker exec food-app-postgres-ci psql -v ON_ERROR_STOP=1 -U food_app -d food_app -c "
-            DO \\$verify\\$
+            DO \$verify\$
             DECLARE
               extension_count integer;
             BEGIN
@@ -111,7 +118,7 @@ jobs:
                 RAISE EXCEPTION 'restaurant_image_source_url_uidx is missing';
               END IF;
             END
-            \\$verify\\$;
+            \$verify\$;
           "
 
       - name: Remove database container

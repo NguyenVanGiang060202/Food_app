@@ -10,22 +10,22 @@ The technologies listed here are architectural decisions for the initial impleme
 
 ## 2. Stack Summary
 
-| Area | Primary technology | Purpose |
-| --- | --- | --- |
-| Frontend | React, TypeScript, Vite | Build the web application. |
-| UI styling | Tailwind CSS | Build consistent, responsive interfaces. |
-| Maps | Leaflet | Render maps and restaurant locations. |
-| Backend | NestJS, TypeScript | Build modular REST APIs and background-service integrations. |
-| Database | PostgreSQL | Store canonical application and operational data. |
-| Geospatial data | PostGIS | Support location, radius, and proximity queries. |
-| Vector search | pgvector | Store embeddings and perform similarity search. |
-| ORM | Prisma | Manage database schema and type-safe data access. |
-| Cache and queue | Redis | Redis is available in Compose; BullMQ is not currently wired into the runtime. |
-| Crawling | TypeScript provider adapters + Playwright | Production collection uses the bounded Google Maps public result-page adapter. |
-| AI generation | Gemini Flash | Extract, enrich, classify, and explain data. |
-| AI embeddings | Gemini Embedding | Generate semantic-search embeddings. |
-| Local deployment | Docker Compose | Run the development environment consistently. |
-| CI/CD | GitHub Actions | Run automated checks and delivery workflows. |
+| Area             | Primary technology                        | Purpose                                                                        |
+| ---------------- | ----------------------------------------- | ------------------------------------------------------------------------------ |
+| Frontend         | React, TypeScript, Vite                   | Build the web application.                                                     |
+| UI styling       | Tailwind CSS                              | Build consistent, responsive interfaces.                                       |
+| Maps             | Leaflet                                   | Render maps and restaurant locations.                                          |
+| Backend          | NestJS, TypeScript                        | Build modular REST APIs and background-service integrations.                   |
+| Database         | PostgreSQL                                | Store canonical application and operational data.                              |
+| Geospatial data  | PostGIS                                   | Support location, radius, and proximity queries.                               |
+| Vector search    | pgvector                                  | Store embeddings and perform similarity search.                                |
+| ORM              | Prisma                                    | Manage database schema and type-safe data access.                              |
+| Cache and queue  | Redis                                     | Redis is available in Compose; BullMQ is not currently wired into the runtime. |
+| Crawling         | TypeScript provider adapters + Playwright | Production collection uses the bounded Google Maps public result-page adapter. |
+| AI generation    | Gemini Flash                              | Extract, enrich, classify, and explain data.                                   |
+| AI embeddings    | Gemini Embedding                          | Generate semantic-search embeddings.                                           |
+| Local deployment | Docker Compose                            | Run the development environment consistently.                                  |
+| CI/CD            | GitHub Actions                            | Run automated checks and delivery workflows.                                   |
 
 ---
 

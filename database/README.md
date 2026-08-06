@@ -75,6 +75,7 @@ npm run start:dev --workspace backend
 ```
 
 Create an account in the frontend, copy `verificationToken` from the signup response, then
-open `http://localhost:5173/verify-email?token=<token>`. After the page reports success,
+open `http://localhost:5173/auth?verifyToken=<token>`. After the page reports success,
 sign in normally. In a deployed environment, replace this development hint with a mail
-delivery provider and keep `AUTH_EXPOSE_VERIFICATION_LINK` disabled.
+delivery provider and keep `AUTH_EXPOSE_VERIFICATION_LINK` disabled. The password-reset
+flow uses the same frontend page with `http://localhost:5173/auth?resetToken=<token>`.

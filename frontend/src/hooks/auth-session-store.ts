@@ -1,6 +1,6 @@
-import { useSyncExternalStore } from "react";
-import { readSessionResponse } from "../lib/auth-session";
-import { clearStoredAuth, getStoredUser, setStoredUser, type LocalUser } from "./auth-storage";
+import { useSyncExternalStore } from 'react';
+import { readSessionResponse } from '../lib/auth-session';
+import { clearStoredAuth, getStoredUser, setStoredUser, type LocalUser } from './auth-storage';
 
 type AuthState = { user: LocalUser | null; loading: boolean };
 type Listener = () => void;
@@ -20,10 +20,10 @@ function syncStoredUser() {
 }
 
 function installBrowserListeners() {
-  if (browserListenersInstalled || typeof window === "undefined") return;
+  if (browserListenersInstalled || typeof window === 'undefined') return;
   browserListenersInstalled = true;
-  window.addEventListener("storage", syncStoredUser);
-  window.addEventListener("bep:auth-change", syncStoredUser);
+  window.addEventListener('storage', syncStoredUser);
+  window.addEventListener('bep:auth-change', syncStoredUser);
 }
 
 function subscribe(listener: Listener) {
@@ -37,11 +37,11 @@ function getSnapshot() {
 }
 
 async function restoreSession() {
-  const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(/\/$/, "");
+  const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '/api/v1').replace(/\/$/, '');
   try {
     const response = await fetch(`${apiBase}/auth/me`, {
-      credentials: "include",
-      headers: { Accept: "application/json" },
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
     });
     const sessionUser = await readSessionResponse(response);
     if (sessionUser) setStoredUser(sessionUser);

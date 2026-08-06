@@ -99,16 +99,16 @@ Do not make price promotions, delivery time, or checkout the dominant hierarchy.
 
 ## 6. UX patterns extracted from reference products
 
-| Reference | Useful pattern | Adaptation for this product |
-| --- | --- | --- |
-| Google Maps Explore | Contextual nearby discovery + map/list relationship | “Gần bạn”, distance chips, map as evidence rather than decoration |
-| Yelp | Review/rating evidence and structured business cards | Show rating, review count, price and category at scan speed |
-| Foursquare | Place taxonomy and neighborhood exploration | Use dish families, areas, and editorial collections |
-| Beli | Personal taste and save-oriented behavior | Make saving and collections part of the loop |
-| Spotify / Netflix | Personalized rails and “why this is for you” | Explain recommendations and vary rails by context |
-| Pinterest / TikTok Explore | Visual, low-commitment browsing | Photos and collections before dense metadata |
-| Airbnb / Tripadvisor | Browse by theme and occasion | “Hẹn hò”, “ăn khuya”, “mới mở”, “hidden gems” collections |
-| Atlas Obscura | Curiosity and local stories | Add short editorial descriptions, not promotional banners |
+| Reference                  | Useful pattern                                       | Adaptation for this product                                       |
+| -------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------- |
+| Google Maps Explore        | Contextual nearby discovery + map/list relationship  | “Gần bạn”, distance chips, map as evidence rather than decoration |
+| Yelp                       | Review/rating evidence and structured business cards | Show rating, review count, price and category at scan speed       |
+| Foursquare                 | Place taxonomy and neighborhood exploration          | Use dish families, areas, and editorial collections               |
+| Beli                       | Personal taste and save-oriented behavior            | Make saving and collections part of the loop                      |
+| Spotify / Netflix          | Personalized rails and “why this is for you”         | Explain recommendations and vary rails by context                 |
+| Pinterest / TikTok Explore | Visual, low-commitment browsing                      | Photos and collections before dense metadata                      |
+| Airbnb / Tripadvisor       | Browse by theme and occasion                         | “Hẹn hò”, “ăn khuya”, “mới mở”, “hidden gems” collections         |
+| Atlas Obscura              | Curiosity and local stories                          | Add short editorial descriptions, not promotional banners         |
 
 These are principles and interaction models, not visual templates to copy.
 

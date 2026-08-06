@@ -18,12 +18,14 @@ async function main(): Promise<void> {
     maxReviewsPerPlace: Number(process.env.CRAWL_MAX_REVIEWS_PER_PLACE) || 5,
   });
 
-  console.error(JSON.stringify({
-    event: 'crawl_start',
-    query: QUERY,
-    location: LOCATION,
-    maxResults: MAX_RESULTS,
-  }));
+  console.error(
+    JSON.stringify({
+      event: 'crawl_start',
+      query: QUERY,
+      location: LOCATION,
+      maxResults: MAX_RESULTS,
+    }),
+  );
 
   const pipeline = new CanonicalUpsertPipeline();
   let crawlRunId: string | undefined;
@@ -55,10 +57,12 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(JSON.stringify({
-    event: 'crawl_fatal',
-    message: error instanceof Error ? error.message : String(error),
-    stack: error instanceof Error ? error.stack : undefined,
-  }));
+  console.error(
+    JSON.stringify({
+      event: 'crawl_fatal',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    }),
+  );
   process.exitCode = 1;
 });

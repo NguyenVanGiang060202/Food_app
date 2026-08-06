@@ -33,18 +33,18 @@ Therefore the UI must:
 
 ## 3. Field-by-Field Display Rules
 
-| Field | Rule |
-| --- | --- |
-| `name` | Always show. |
-| `image` / `coverImageUrl` | Show the observed image. If NULL, show the neutral `no-photo.svg` placeholder (this is a layout placeholder for an absent media, allowed). Do NOT substitute an unrelated/stock photo. |
-| `rating` | Show only when `rating != null && rating > 0`. Otherwise omit. |
-| `reviewCount` | Show only when `reviewCount != null && reviewCount > 0`. Never estimate it from review text. |
-| `formattedAddress` / `area` | Show when present. |
-| `openingHours` | Show only when actually observed. Omit (do not render "Giờ mở cửa chưa rõ") when NULL. |
-| `phone`, `websiteUrl` | Show only when present. |
-| `priceLevel` / price | See Section 4. Currently NOT shown at all. |
-| `sourceUrl` | Always expose a link to the source page so the user can verify. |
-| `latitude` / `longitude` | Show map pin only when both present. |
+| Field                       | Rule                                                                                                                                                                                   |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                      | Always show.                                                                                                                                                                           |
+| `image` / `coverImageUrl`   | Show the observed image. If NULL, show the neutral `no-photo.svg` placeholder (this is a layout placeholder for an absent media, allowed). Do NOT substitute an unrelated/stock photo. |
+| `rating`                    | Show only when `rating != null && rating > 0`. Otherwise omit.                                                                                                                         |
+| `reviewCount`               | Show only when `reviewCount != null && reviewCount > 0`. Never estimate it from review text.                                                                                           |
+| `formattedAddress` / `area` | Show when present.                                                                                                                                                                     |
+| `openingHours`              | Show only when actually observed. Omit (do not render "Giờ mở cửa chưa rõ") when NULL.                                                                                                 |
+| `phone`, `websiteUrl`       | Show only when present.                                                                                                                                                                |
+| `priceLevel` / price        | See Section 4. Currently NOT shown at all.                                                                                                                                             |
+| `sourceUrl`                 | Always expose a link to the source page so the user can verify.                                                                                                                        |
+| `latitude` / `longitude`    | Show map pin only when both present.                                                                                                                                                   |
 
 ### Notes
 

@@ -43,16 +43,16 @@ Cursor-paginated collection:
 }
 ```
 
-| HTTP status | Error code | Meaning |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | Request input is invalid. |
-| 401 | `UNAUTHENTICATED` | Authentication is missing or invalid. |
-| 403 | `FORBIDDEN` | Actor lacks required permission. |
-| 404 | `NOT_FOUND` | Resource is unavailable. |
-| 409 | `CONFLICT` | Request conflicts with current state. |
-| 429 | `RATE_LIMITED` | Request quota was exceeded. |
-| 500 | `INTERNAL_ERROR` | Unexpected server failure. |
-| 503 | `SERVICE_UNAVAILABLE` | Temporary dependency failure. |
+| HTTP status | Error code            | Meaning                               |
+| ----------- | --------------------- | ------------------------------------- |
+| 400         | `VALIDATION_ERROR`    | Request input is invalid.             |
+| 401         | `UNAUTHENTICATED`     | Authentication is missing or invalid. |
+| 403         | `FORBIDDEN`           | Actor lacks required permission.      |
+| 404         | `NOT_FOUND`           | Resource is unavailable.              |
+| 409         | `CONFLICT`            | Request conflicts with current state. |
+| 429         | `RATE_LIMITED`        | Request quota was exceeded.           |
+| 500         | `INTERNAL_ERROR`      | Unexpected server failure.            |
+| 503         | `SERVICE_UNAVAILABLE` | Temporary dependency failure.         |
 
 All collection `limit` values must be between `1` and `50`. Unknown query parameters are rejected or ignored according to the endpoint DTO; this behavior must remain consistent.
 
@@ -116,18 +116,18 @@ Returns `200` only when required runtime dependencies are ready. It must not rev
 GET /restaurants
 ```
 
-| Query parameter | Type | Rules |
-| --- | --- | --- |
-| `query` | string | Maximum 200 characters. |
-| `category` | string | Public category slug. |
-| `city`, `district` | string | Maximum 100 characters each. |
-| `latitude`, `longitude` | number | Must be supplied together; valid geographic ranges. |
-| `radiusMeters` | integer | `1`–`50000`; requires coordinates. |
-| `minRating` | number | `0`–`5`. |
-| `priceLevel` | integer | Initial range `1`–`4`. |
-| `openNow` | boolean | Applied only when reliable hours exist. |
-| `sort` | enum | `relevance`, `distance`, `rating`, `newest`. |
-| `limit`, `cursor` | pagination | Shared pagination rules. |
+| Query parameter         | Type       | Rules                                               |
+| ----------------------- | ---------- | --------------------------------------------------- |
+| `query`                 | string     | Maximum 200 characters.                             |
+| `category`              | string     | Public category slug.                               |
+| `city`, `district`      | string     | Maximum 100 characters each.                        |
+| `latitude`, `longitude` | number     | Must be supplied together; valid geographic ranges. |
+| `radiusMeters`          | integer    | `1`–`50000`; requires coordinates.                  |
+| `minRating`             | number     | `0`–`5`.                                            |
+| `priceLevel`            | integer    | Initial range `1`–`4`.                              |
+| `openNow`               | boolean    | Applied only when reliable hours exist.             |
+| `sort`                  | enum       | `relevance`, `distance`, `rating`, `newest`.        |
+| `limit`, `cursor`       | pagination | Shared pagination rules.                            |
 
 Response `200`: paginated `RestaurantSummary` values.
 
@@ -261,16 +261,16 @@ The authentication protocol is finalized in `14-security.md` before implementati
 
 All `/admin` routes require the administrator role and write operations must create audit-log entries.
 
-| Method | Route | Contract |
-| --- | --- | --- |
-| GET | `/admin/data-sources` | Paginated provider status list. |
-| PATCH | `/admin/data-sources/{id}` | Allowed fields: enabled state and approved operational settings. |
-| POST | `/admin/crawl-runs` | Queues a bounded crawl request; returns `202 Accepted`. |
-| GET | `/admin/crawl-runs` | Paginated operational history. |
-| GET | `/admin/processing-records` | Paginated failures and processing status. |
-| POST | `/admin/processing-records/{id}/retry` | Queues an eligible retry; returns `202 Accepted`. |
-| GET | `/admin/restaurants/unresolved` | Candidate records requiring data review. |
-| PATCH | `/admin/restaurants/{id}` | Curates allowed canonical fields with audit trail. |
+| Method | Route                                  | Contract                                                         |
+| ------ | -------------------------------------- | ---------------------------------------------------------------- |
+| GET    | `/admin/data-sources`                  | Paginated provider status list.                                  |
+| PATCH  | `/admin/data-sources/{id}`             | Allowed fields: enabled state and approved operational settings. |
+| POST   | `/admin/crawl-runs`                    | Queues a bounded crawl request; returns `202 Accepted`.          |
+| GET    | `/admin/crawl-runs`                    | Paginated operational history.                                   |
+| GET    | `/admin/processing-records`            | Paginated failures and processing status.                        |
+| POST   | `/admin/processing-records/{id}/retry` | Queues an eligible retry; returns `202 Accepted`.                |
+| GET    | `/admin/restaurants/unresolved`        | Candidate records requiring data review.                         |
+| PATCH  | `/admin/restaurants/{id}`              | Curates allowed canonical fields with audit trail.               |
 
 Manual crawl request:
 

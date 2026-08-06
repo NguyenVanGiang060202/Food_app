@@ -2,7 +2,7 @@
   "name": "@food-discovery/frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "React web application for Food Discovery Platform.",
+  "description": "React web application for Bếp, a playful food discovery experience.",
   "type": "module",
   "scripts": {
     "dev": "vite",

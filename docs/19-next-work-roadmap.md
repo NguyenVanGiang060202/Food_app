@@ -100,6 +100,24 @@ PostgreSQL/Redis/backend trực tiếp ra Internet.
 
 ### P0.3 Deploy một máy chủ đơn giản
 
+#### VPS đã chọn — [REDACTED PROVIDER / PLAN] — ĐÃ MUA
+
+- Nhà cung cấp: [REDACTED]
+- Cấu hình: [REDACTED]
+- Mạng: [REDACTED]
+- Kèm: [REDACTED]
+- Kế hoạch: **chạy thử 1–2 tháng** trước khi cam kết lâu dài; trả theo tháng, có thể hủy.
+- **Thông tin server (lưu riêng ngoài repository):**
+  - Hostname: `[REDACTED]`
+  - IP chính: `[REDACTED]`
+  - Account: `[REDACTED]`
+  - OS khuyến nghị khi cài: Ubuntu 22.04 LTS.
+  - Mật khẩu root: **KHÔNG ghi vào commit** — giữ riêng trong password manager.
+- Lưu ý tài nguyên: 2 GB RAM là mức tối thiểu — PostgreSQL (~512MB–1GB) + Redis (~100–200MB) +
+  backend (~200–500MB) + frontend Nginx (~50MB) + OS (~200–500MB). Theo dõi `free -h` sau khi deploy;
+  nếu hết RAM có thể thêm swap hoặc nâng lên plan tương đương.
+- Hạng mục deploy chi tiết: xem mục triển khai VPS nội bộ bên dưới.
+
 - Dùng một VPS nhỏ hoặc nền tảng Docker có persistent volume.
 - Chạy frontend production, backend, PostgreSQL và Redis bằng Compose hoặc
   dịch vụ managed tương đương.

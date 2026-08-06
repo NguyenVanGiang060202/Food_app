@@ -1,4 +1,4 @@
-# Food Discovery Platform - User Flows
+# NoN? Platform - User Flows
 
 ## 1. Purpose
 
@@ -8,11 +8,11 @@ This document defines the MVP user journeys for the web application. It aligns p
 
 ## 2. Primary User Roles
 
-| Role | Main goal |
-| --- | --- |
-| Visitor | Discover restaurants without signing in. |
-| Authenticated user | Save restaurants and manage preferences. |
-| Administrator | Monitor data collection and resolve quality issues. |
+| Role               | Main goal                                           |
+| ------------------ | --------------------------------------------------- |
+| Visitor            | Discover restaurants without signing in.            |
+| Authenticated user | ?? d?nh restaurants and manage preferences.         |
+| Administrator      | Monitor data collection and resolve quality issues. |
 
 ---
 
@@ -93,10 +93,10 @@ Recommendation results must remain useful if no explanation is available. Users 
 
 ---
 
-## 7. Authentication and Saved Places Flow
+## 7. Authentication and ?? d?nhd Places Flow
 
 ```text
-User selects Save
+User selects ?? d?nh
   ↓
 Authenticated? ── no → sign-in route → return to original page
        │
@@ -104,7 +104,7 @@ Authenticated? ── no → sign-in route → return to original page
        ↓
 POST /users/me/saved-restaurants/{restaurantId}
        ↓
-Saved state shown; profile lists saved restaurants
+?? d?nhd state shown; profile lists saved restaurants
 ```
 
 Removing a saved restaurant is immediately reflected in the UI after a successful API response. The flow must handle expired sessions gracefully.
@@ -127,7 +127,7 @@ Administrative actions require confirmation for meaningful state changes and cre
 
 ---
 
-## 9. Shared UX States
+## 9. R? r?d UX States
 
 Every data-backed flow must provide a visible loading state, a meaningful empty state, a retryable error state where appropriate, and a partial-data presentation. Map-based flows always have a list-based fallback. Location permission is requested only after user action and denial does not block search.
 

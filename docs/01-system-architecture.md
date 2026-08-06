@@ -63,14 +63,14 @@ The system is designed to be data-first, modular, scalable, and cost-conscious. 
 
 ## 4. Component Responsibilities
 
-| Layer | Main responsibilities | Must not be responsible for |
-| --- | --- | --- |
-| Crawler | Retrieve source data, respect rate limits, preserve source metadata, emit crawl jobs/results. | Search ranking, frontend behavior, direct client responses. |
-| Data pipeline | Validate, normalize, deduplicate, enrich, and persist data. | Rendering UI or source-specific user flows. |
-| Data layer | Store canonical records, raw references, job state, and search/vector data. | Business decisions embedded in database triggers. |
-| Backend API | Authorize requests, expose domain APIs, orchestrate search and detail reads. | Long-running crawl or enrichment work during a request. |
-| Recommendation system | Retrieve candidates, calculate ranking signals, generate optional explanations. | Owning canonical restaurant data. |
-| Frontend | Present data, collect user input, and call APIs. | Crawling, data normalization, or business-rule duplication. |
+| Layer                 | Main responsibilities                                                                         | Must not be responsible for                                 |
+| --------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Crawler               | Retrieve source data, respect rate limits, preserve source metadata, emit crawl jobs/results. | Search ranking, frontend behavior, direct client responses. |
+| Data pipeline         | Validate, normalize, deduplicate, enrich, and persist data.                                   | Rendering UI or source-specific user flows.                 |
+| Data layer            | Store canonical records, raw references, job state, and search/vector data.                   | Business decisions embedded in database triggers.           |
+| Backend API           | Authorize requests, expose domain APIs, orchestrate search and detail reads.                  | Long-running crawl or enrichment work during a request.     |
+| Recommendation system | Retrieve candidates, calculate ranking signals, generate optional explanations.               | Owning canonical restaurant data.                           |
+| Frontend              | Present data, collect user input, and call APIs.                                              | Crawling, data normalization, or business-rule duplication. |
 
 ---
 
