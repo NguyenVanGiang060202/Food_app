@@ -75,19 +75,34 @@ jobs:
 
       - name: Wait for database and validate schema
         run: |
+          ready=false
           for attempt in {1..30}; do
             if docker exec food-app-postgres-ci pg_isready -U food_app -d food_app; then
+              ready=true
               break
             fi
             sleep 2
           done
+          if [ "$ready" != "true" ]; then
+            docker logs food-app-postgres-ci
+            exit 1
+          fi
+
           # Wait for init scripts to complete (check for last migration table/index)
+          schema_ready=false
           for attempt in {1..30}; do
             if docker exec food-app-postgres-ci psql -U food_app -d food_app -tAc "SELECT 1 FROM pg_indexes WHERE indexname = 'restaurant_image_source_url_uidx'" 2>/dev/null | grep -q 1; then
+              schema_ready=true
               break
             fi
             sleep 2
           done
+          if [ "$schema_ready" != "true" ]; then
+            docker logs food-app-postgres-ci
+            docker exec food-app-postgres-ci psql -U food_app -d food_app -c "SELECT schemaname, tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;" || true
+            exit 1
+          fi
+
           docker exec food-app-postgres-ci psql -v ON_ERROR_STOP=1 -U food_app -d food_app -c "
             DO \$verify\$
             DECLARE

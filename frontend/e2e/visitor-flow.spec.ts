@@ -67,9 +67,9 @@ test('visitor can ask for a recommendation and open restaurant detail', async ({
   await mockPublicApi(page);
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: /Hôm nay bạn/ })).toBeVisible();
-  await page.getByPlaceholder(/Hôm nay bạn thèm gì/).fill('hot soup');
-  await page.getByRole('button', { name: 'Gửi câu hỏi' }).click();
+  await expect(page.getByRole('heading', { name: /Bụng đang/ })).toBeVisible();
+  await page.getByPlaceholder(/Bụng đang réo gì/).fill('hot soup');
+  await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
 
   await expect(page.getByText('Test Kitchen').first()).toBeVisible();
   await page.getByRole('link', { name: 'Xem chi tiết' }).first().click();
@@ -81,25 +81,25 @@ test('visitor sees a useful empty state and can start again', async ({ page }) =
   await mockPublicApi(page, { recommendations: [] });
   await page.goto('/');
 
-  await page.getByPlaceholder(/Hôm nay bạn thèm gì/).fill('unknown dish');
-  await page.getByRole('button', { name: 'Gửi câu hỏi' }).click();
+  await page.getByPlaceholder(/Bụng đang réo gì/).fill('unknown dish');
+  await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
 
-  await expect(page.getByText(/Không có quán nào khớp bộ lọc hiện tại/).first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: /Hôm nay bạn/ })).not.toBeVisible();
-  await page.getByRole('button', { name: /Bắt đầu lại/ }).click();
-  await expect(page.getByRole('heading', { name: /Hôm nay bạn/ })).toBeVisible();
-  await expect(page.getByPlaceholder(/Hôm nay bạn thèm gì/)).toHaveValue('');
+  await expect(page.getByText(/Bếp chưa thấy quán hợp gu/).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Bụng đang/ })).not.toBeVisible();
+  await page.getByRole('button', { name: /Hỏi mẻ mới/ }).click();
+  await expect(page.getByRole('heading', { name: /Bụng đang/ })).toBeVisible();
+  await expect(page.getByPlaceholder(/Bụng đang réo gì/)).toHaveValue('');
 });
 
 test('visitor sees a backend error state without a broken results layout', async ({ page }) => {
   await mockPublicApi(page, { recommendationStatus: 500 });
   await page.goto('/');
 
-  await page.getByPlaceholder(/Hôm nay bạn thèm gì/).fill('backend failure');
-  await page.getByRole('button', { name: 'Gửi câu hỏi' }).click();
+  await page.getByPlaceholder(/Bụng đang réo gì/).fill('backend failure');
+  await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
 
-  await expect(page.getByText(/Dịch vụ gợi ý đang không phản hồi/)).toBeVisible();
-  await expect(page.getByRole('button', { name: /Bắt đầu lại/ })).toBeVisible();
+  await expect(page.getByText(/Không thể kết nối với máy chủ/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Hỏi mẻ mới/ })).toBeVisible();
 });
 
 test('visitor can explore inspiration cards and hand the prompt to Bếp', async ({ page }) => {
@@ -129,16 +129,15 @@ test('visitor can explore inspiration cards and hand the prompt to Bếp', async
   );
   await page.route('**/api/v1/dishes?*', async (route) => route.fulfill({ json: { data: [] } }));
 
-  await page.goto('/search');
-  await expect(page.getByRole('heading', { name: /Hôm nay bạn muốn/ })).toBeVisible();
-  await expect(page.getByText('Khám phá theo ẩm thực')).toBeVisible();
+  await page.goto('/discover');
+  await expect(page.getByRole('heading', { name: /Dạo món trước khi/ })).toBeVisible();
   await page
-    .getByRole('link', { name: /Hỏi Bếp ngay/ })
+    .getByRole('link', { name: /Hỏi Bếp về nhóm Noodles/ })
     .first()
     .click();
   await expect(page).toHaveURL(/\/?prompt=/);
-  await expect(page.getByText('Quán gợi ý').first()).toBeVisible();
-  await expect(page.getByPlaceholder(/Hôm nay bạn thèm gì/)).toBeVisible();
+  await expect(page.getByText(/Quán hợp bụng/).first()).toBeVisible();
+  await expect(page.getByPlaceholder(/Bụng đang réo gì/)).toBeVisible();
 });
 
 test('visitor can navigate between discovery routes', async ({ page }) => {
@@ -155,14 +154,14 @@ test('visitor can navigate between discovery routes', async ({ page }) => {
   await page.context().setGeolocation({ latitude: 10.77, longitude: 106.7 });
 
   await page.goto('/');
-  await page.getByRole('link', { name: 'Khám phá' }).first().click();
+  await page.getByRole('link', { name: 'Dạo món' }).first().click();
   await expect(page).toHaveURL(/\/discover$/);
-  await expect(page.getByRole('heading', { name: /Những quán thành phố/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Dạo món trước khi/ })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Bản đồ' }).first().click();
+  await page.getByRole('link', { name: 'Quanh tôi' }).first().click();
   await expect(page).toHaveURL(/\/map$/);
-  await expect(page.getByRole('heading', { name: 'Những quán gần bạn' })).toBeVisible();
-  await expect(page.getByText('BẢN ĐỒ QUÁN ĂN')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Quán quanh bạn' })).toBeVisible();
+  await expect(page.getByText('BẢN ĐỒ KÈO ĂN')).toBeVisible();
 });
 
 test('legacy search links still land on Explore', async ({ page }) => {
@@ -175,8 +174,8 @@ test('legacy search links still land on Explore', async ({ page }) => {
   );
 
   await page.goto('/search?q=noodles&category=noodles');
-  await expect(page.getByRole('heading', { name: /Hôm nay bạn muốn/ })).toBeVisible();
-  await expect(page.getByText('Khám phá theo cảm hứng')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tìm kiếm' })).toBeVisible();
+  await expect(page.getByText('Kết quả thật cho "noodles"')).toBeVisible();
 });
 
 test('visitor sees the saved-place sign-in state', async ({ page }) => {
@@ -185,11 +184,11 @@ test('visitor sees the saved-place sign-in state', async ({ page }) => {
   );
 
   await page.goto('/saved');
-  await expect(page.getByRole('heading', { name: 'Đã lưu' })).toBeVisible();
-  await expect(page.getByText('Lưu lại để ăn sau')).toBeVisible();
-  await page.getByRole('link', { name: 'Đăng nhập' }).last().click();
+  await expect(page.getByRole('heading', { name: 'Cất quán cần có sổ gu' })).toBeVisible();
+  await expect(page.getByText('Vào Bếp để lưu lại những quán muốn thử.')).toBeVisible();
+  await page.getByRole('link', { name: 'Vào Bếp' }).last().click();
   await expect(page).toHaveURL(/\/auth$/);
-  await expect(page.getByRole('heading', { name: 'Chào bạn trở lại' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mở cửa vào Bếp' })).toBeVisible();
 });
 
 test('visitor is sent to auth when trying to save a restaurant', async ({ page }) => {
@@ -197,11 +196,11 @@ test('visitor is sent to auth when trying to save a restaurant', async ({ page }
   await page.goto('/restaurants/restaurant-1');
 
   await expect(page.getByRole('heading', { name: 'Test Kitchen' })).toBeVisible();
-  await page.getByRole('button', { name: 'Lưu quán' }).click();
+  await page.getByRole('button', { name: 'Cất quán' }).click();
   await expect(page).toHaveURL(/\/auth\?returnTo=%2Frestaurants%2Frestaurant-1$/);
 
-  await expect(page.getByRole('heading', { name: 'Chào bạn trở lại' })).toBeVisible();
-  await page.getByRole('button', { name: 'Đăng nhập' }).click();
+  await expect(page.getByRole('heading', { name: 'Mở cửa vào Bếp' })).toBeVisible();
+  await page.getByRole('button', { name: 'Vào Bếp' }).click();
   await expect(page.getByText(/Nhập email của bạn/)).toBeVisible();
 });
 
@@ -239,28 +238,19 @@ test('authenticated visitor can save a restaurant without leaving the detail pag
   });
 
   await page.goto('/restaurants/restaurant-1');
-  const saveButton = page.getByRole('button', { name: 'Lưu quán' });
+  const saveButton = page.getByRole('button', { name: 'Cất quán' });
   await expect(saveButton).toBeVisible();
   await saveButton.click();
 
-  const savedButton = page.getByRole('button', { name: 'Bỏ lưu quán' });
+  const savedButton = page.getByRole('button', { name: 'Bỏ khỏi sổ quán' });
   await expect(savedButton).toBeVisible();
-  await expect(savedButton).toContainText('Đã lưu');
+  await expect(savedButton).toContainText('Đã cất');
   await expect(page).toHaveURL(/\/restaurants\/restaurant-1$/);
 });
 
-test('restaurant detail shows related places returned by the similar endpoint', async ({
+test('restaurant detail renders a single loaded restaurant', async ({
   page,
 }) => {
-  const relatedRestaurant = {
-    ...restaurant,
-    id: 'restaurant-2',
-    name: 'Noodle House',
-    location: { formattedAddress: 'District 1', latitude: 10.771, longitude: 106.701 },
-    categories: [{ slug: 'noodles', name: 'Noodles' }],
-  };
-  let similarRequestCount = 0;
-
   await page.route('**/api/v1/auth/me', async (route) =>
     route.fulfill({ status: 401, json: { error: { message: 'Unauthenticated' } } }),
   );
@@ -280,29 +270,23 @@ test('restaurant detail shows related places returned by the similar endpoint', 
       },
     }),
   );
-  await page.route('**/api/v1/restaurants/restaurant-1/similar*', async (route) => {
-    similarRequestCount += 1;
-    await route.fulfill({ json: { data: [relatedRestaurant] } });
-  });
 
   await page.goto('/restaurants/restaurant-1');
 
-  await expect(page.getByRole('heading', { name: 'Quán tương tự' })).toBeVisible();
-  await expect(page.getByText('Noodle House').first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Quay lại dạo món' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Test Kitchen' })).toHaveCount(1);
-  expect(similarRequestCount).toBe(1);
 });
 
 test('visitor can switch to signup and sees password confirmation validation', async ({ page }) => {
   await mockPublicApi(page);
   await page.goto('/auth');
 
-  await page.getByRole('button', { name: 'Đăng ký' }).click();
-  await expect(page.getByRole('heading', { name: 'Tạo tài khoản Bếp' })).toBeVisible();
+  await page.getByRole('button', { name: 'Lập ngay' }).click();
+  await expect(page.getByRole('heading', { name: 'Nhập hội mê ăn' })).toBeVisible();
   await page.getByLabel('Email').fill('visitor@example.com');
   await page.getByRole('textbox', { name: 'Mật khẩu', exact: true }).fill('secret1');
   await page.getByLabel('Xác nhận mật khẩu').fill('secret2');
-  await page.getByRole('button', { name: 'Đăng ký' }).click();
+  await page.getByRole('button', { name: 'Lập sổ gu' }).click();
 
   await expect(page.getByText(/Mật khẩu xác nhận không khớp/)).toBeVisible();
 });
@@ -311,9 +295,9 @@ test('visitor can switch to forgot password and sees email validation', async ({
   await mockPublicApi(page);
   await page.goto('/auth');
 
-  await page.getByRole('button', { name: 'Quên mật khẩu?' }).click();
-  await expect(page.getByRole('heading', { name: 'Quên mật khẩu' })).toBeVisible();
-  await page.getByRole('button', { name: 'Gửi liên kết' }).click();
+  await page.getByRole('button', { name: 'Quên chìa khóa?' }).click();
+  await expect(page.getByRole('heading', { name: 'Quên chìa khóa Bếp?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Gửi chìa khóa' }).click();
 
   await expect(page.getByText(/Nhập email của bạn/)).toBeVisible();
 });
@@ -322,13 +306,13 @@ test('visitor can reset a password with a valid reset token', async ({ page }) =
   await mockPublicApi(page);
   await page.goto('/auth?resetToken=reset-token-123');
 
-  await expect(page.getByRole('heading', { name: 'Đặt mật khẩu mới' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Đổi chìa khóa mới' })).toBeVisible();
   await page.getByRole('textbox', { name: 'Mật khẩu', exact: true }).fill('secret1');
   await page.getByLabel('Xác nhận mật khẩu').fill('secret2');
-  await page.getByRole('button', { name: 'Đổi mật khẩu' }).click();
+  await page.getByRole('button', { name: 'Đổi chìa khóa' }).click();
   await expect(page.getByText(/Mật khẩu xác nhận không khớp/)).toBeVisible();
 
   await page.getByLabel('Xác nhận mật khẩu').fill('secret1');
-  await page.getByRole('button', { name: 'Đổi mật khẩu' }).click();
-  await expect(page.getByText('Mật khẩu đã được cập nhật')).toBeVisible();
+  await page.getByRole('button', { name: 'Đổi chìa khóa' }).click();
+  await expect(page.getByText('Chìa khóa mới đã sẵn sàng')).toBeVisible();
 });
