@@ -10,8 +10,10 @@ CREATE TABLE IF NOT EXISTS app_user (
   email text NOT NULL UNIQUE,
   password_hash text NOT NULL,
   display_name text,
+  role text NOT NULL DEFAULT 'user',
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT app_user_role_check CHECK (role IN ('user', 'admin'))
 );
 
 CREATE TABLE IF NOT EXISTS saved_restaurant (
@@ -22,6 +24,7 @@ CREATE TABLE IF NOT EXISTS saved_restaurant (
 );
 
 CREATE INDEX IF NOT EXISTS saved_restaurant_user_created_idx ON saved_restaurant (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS app_user_role_idx ON app_user (role);
 DROP TRIGGER IF EXISTS app_user_set_updated_at ON app_user;
 CREATE TRIGGER app_user_set_updated_at BEFORE UPDATE ON app_user
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
