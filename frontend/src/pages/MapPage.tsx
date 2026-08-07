@@ -24,6 +24,7 @@ export function MapPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [view, setView] = useState<'map' | 'list'>('map');
   const locationEpochRef = useRef(0);
 
   useEffect(() => {
@@ -136,10 +137,10 @@ export function MapPage() {
     { label: 'Sát bên', attrs: [], maxDistance: 2 },
   ];
   return (
-    <div className="h-screen overflow-hidden pb-20 md:pb-0">
+    <div className="h-screen overflow-hidden">
       <Header />
-      <main className="container-page flex h-[calc(100vh-4rem)] min-h-0 flex-col py-4">
-        <div className="flex items-center justify-between gap-4">
+      <main className="container-page flex h-[calc(100vh-4rem)] min-h-0 flex-col py-4 pb-20 md:pb-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
           <div>
             <div className="text-xs font-bold uppercase tracking-[.18em] text-primary">
               BẢN ĐỒ KÈO ĂN
@@ -160,6 +161,22 @@ export function MapPage() {
                 {activeCount}
               </span>
             )}
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-1 rounded-full border border-border bg-card p-1 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setView('map')}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium ${view === 'map' ? 'bg-primary text-white' : 'text-muted-foreground'}`}
+          >
+            Bản đồ
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('list')}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium ${view === 'list' ? 'bg-primary text-white' : 'text-muted-foreground'}`}
+          >
+            Danh sách
           </button>
         </div>
         {showFilters && (
@@ -308,7 +325,9 @@ export function MapPage() {
           </div>
         )}
         <div className="mt-4 grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_1.1fr]">
-          <div className="min-h-0 space-y-2 overflow-y-auto pr-1">
+          <div
+            className={`min-h-0 space-y-2 overflow-y-auto pr-1 ${view === 'list' ? 'block' : 'hidden'} lg:block`}
+          >
             {loadError && (
               <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 <p>Không thể tải dữ liệu từ backend.</p>
@@ -420,7 +439,9 @@ export function MapPage() {
               </div>
             )}
           </div>
-          <div className="relative min-h-0 overflow-hidden rounded-2xl border border-border bg-parchment shadow-soft">
+          <div
+            className={`relative min-h-0 overflow-hidden rounded-2xl border border-border bg-parchment shadow-soft ${view === 'map' ? 'block' : 'hidden'} lg:block`}
+          >
             <MapCanvas
               activeId={active}
               restaurants={items}

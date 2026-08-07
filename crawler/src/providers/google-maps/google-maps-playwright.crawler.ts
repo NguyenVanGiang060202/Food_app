@@ -153,7 +153,10 @@ export class GoogleMapsPlaywrightCrawler {
       const link = page.locator(`a[href="${url.replace(/"/g, '\\"')}"]`);
       if ((await link.count()) === 0) return;
 
-      await link.first().click();
+      await link
+        .first()
+        .click({ force: true, timeout: 8000 })
+        .catch(() => undefined);
       await page.waitForTimeout(2000);
 
       const details = await this.extractDetailPanelData(page);

@@ -11,7 +11,7 @@ export function DishResult({ id, dish }: { id: string; dish?: Dish }) {
   return (
     <Link
       to={`/dishes/${encodeURIComponent(dish.id)}`}
-      className="group flex gap-3 rounded-xl border border-border bg-card p-2 transition-colors hover:border-primary/50"
+      className="group flex gap-3 rounded-xl border border-border bg-card p-2 transition-colors hover:border-primary/50 active:scale-[0.99]"
     >
       <SmartImage
         src={dish.image}
@@ -69,7 +69,7 @@ export function RestaurantResult({
         }}
         role={onSelect ? 'button' : undefined}
         tabIndex={onSelect ? 0 : undefined}
-        className={`relative flex h-full flex-col rounded-xl border border-border bg-card p-3 shadow-soft transition-colors hover:border-primary/50 ${onSelect ? 'cursor-pointer' : ''}`}
+        className={`relative flex h-full flex-col rounded-xl border border-border bg-card p-3 shadow-soft transition-colors hover:border-primary/50 active:scale-[0.99] ${onSelect ? 'cursor-pointer' : ''}`}
       >
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] items-stretch gap-3">
           {selectOnly ? (
@@ -178,7 +178,7 @@ export function RestaurantResult({
   return (
     <div
       onClick={onSelect}
-      className={`relative flex h-full min-h-[212px] flex-col rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/50 ${onSelect ? 'cursor-pointer' : ''}`}
+      className={`relative flex h-full min-h-[212px] flex-col rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/50 active:scale-[0.99] ${onSelect ? 'cursor-pointer' : ''}`}
     >
       <div className="flex min-h-0 flex-1 gap-3">
         <Link

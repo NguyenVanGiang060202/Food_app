@@ -11,8 +11,8 @@ import { SmartImage } from './SmartImage';
 export function RestaurantCardSkeleton() {
   return (
     <div aria-hidden className="flex h-full flex-col rounded-2xl bg-card p-3 shadow-soft">
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] items-stretch gap-4">
-        <div className="aspect-square w-full self-start overflow-hidden rounded-xl bg-muted" />
+      <div className="flex min-w-0 items-stretch gap-3">
+        <div className="aspect-square w-24 shrink-0 self-start overflow-hidden rounded-xl bg-muted sm:w-32 md:w-36" />
         <div className="min-w-0 py-1">
           <div className="flex min-w-0 items-start gap-2">
             <Skeleton className="h-5 w-3/4 rounded-md" />
@@ -40,7 +40,7 @@ export function DishCard({ dish, size = 'md' }: { dish: Dish; size?: 'sm' | 'md'
   return (
     <Link
       to={`/dishes/${encodeURIComponent(dish.id)}`}
-      className="group block overflow-hidden rounded-2xl bg-card shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift"
+      className="group block overflow-hidden rounded-2xl bg-card shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift active:scale-[0.99]"
     >
       <div
         className={`relative overflow-hidden ${size === 'lg' ? 'aspect-[4/5]' : 'aspect-[4/3]'}`}
@@ -59,28 +59,28 @@ export function DishCard({ dish, size = 'md' }: { dish: Dish; size?: 'sm' | 'md'
       </div>
       <div className="p-4">
         {(dish.cuisine || dish.category) && (
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-muted-foreground">
-            {dish.cuisine && <span>{dish.cuisine}</span>}
-            {dish.cuisine && dish.category && (
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
-            )}
-            {dish.category && <span>{dish.category}</span>}
+          <div className="truncate text-[11px] uppercase tracking-widest text-muted-foreground">
+            {[dish.cuisine, dish.category].filter(Boolean).join(' · ')}
           </div>
         )}
         <h3 className="mt-1.5 font-display text-lg leading-tight">{dish.name}</h3>
         {dish.vi && <p className="text-sm text-muted-foreground">{dish.vi}</p>}
-        <div className="mt-3 flex items-center justify-between">
-          {dish.price > 0 && <span className="text-sm font-medium">{formatVnd(dish.price)}</span>}
-          <div className="flex flex-wrap gap-1">
-            {dish.attrs.slice(0, 2).map((a) => (
-              <span
-                key={a}
-                className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground"
-              >
-                {a}
-              </span>
-            ))}
-          </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          {dish.price > 0 && (
+            <span className="shrink-0 text-sm font-medium">{formatVnd(dish.price)}</span>
+          )}
+          {dish.attrs.length > 0 && (
+            <div className="flex min-w-0 items-center justify-end gap-1 overflow-hidden">
+              {dish.attrs.slice(0, 2).map((a) => (
+                <span
+                  key={a}
+                  className="shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground"
+                >
+                  {a}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </Link>
@@ -100,7 +100,7 @@ export function RestaurantCard({
 }) {
   if (dense) {
     return (
-      <article className="group flex h-full min-h-0 flex-col overflow-hidden rounded-xl bg-card p-2 shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift">
+      <article className="group flex h-full min-h-0 flex-col overflow-hidden rounded-xl bg-card p-2 shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift active:scale-[0.99]">
         <Link
           to={`/restaurants/${r.id}`}
           className="block aspect-[2.5/1] shrink-0 overflow-hidden rounded-lg bg-muted"
@@ -151,14 +151,12 @@ export function RestaurantCard({
   }
   return (
     <article
-      className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift ${compact ? 'p-2.5' : 'p-3'}`}
+      className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift active:scale-[0.99] ${compact ? 'p-2.5' : 'p-3'}`}
     >
-      <div
-        className={`grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] items-stretch ${compact ? 'gap-2.5' : 'gap-4'}`}
-      >
+      <div className={`flex min-w-0 items-stretch ${compact ? 'gap-2.5' : 'gap-3'}`}>
         <Link
           to={`/restaurants/${r.id}`}
-          className={`block aspect-square w-full self-start overflow-hidden rounded-xl bg-muted ${compact ? 'rounded-lg' : ''}`}
+          className={`block aspect-square shrink-0 self-start overflow-hidden rounded-xl bg-muted ${compact ? 'w-20 rounded-lg' : 'w-24 sm:w-32 md:w-36'}`}
         >
           {r.image ? (
             <SmartImage
@@ -184,7 +182,7 @@ export function RestaurantCard({
           </div>
           {r.cuisine.length > 0 && (
             <div
-              className={`mt-1 flex items-center gap-2 uppercase tracking-widest text-muted-foreground ${compact ? 'text-[10px]' : 'text-[11px]'}`}
+              className={`mt-1 min-w-0 truncate uppercase tracking-wider text-muted-foreground ${compact ? 'text-[10px]' : 'text-[11px]'}`}
             >
               {r.cuisine.slice(0, 2).join(' · ')}
             </div>
@@ -193,10 +191,10 @@ export function RestaurantCard({
           (r.reviews != null && r.reviews > 0) ||
           r.distanceKm != null ? (
             <div
-              className={`flex flex-wrap items-center text-muted-foreground ${compact ? 'mt-1 gap-x-2 gap-y-0.5 text-[11px]' : 'mt-2 gap-x-3 gap-y-1 text-xs'}`}
+              className={`flex min-w-0 items-center text-muted-foreground ${compact ? 'mt-1 gap-x-1.5 text-[11px]' : 'mt-2 gap-x-2 text-xs'}`}
             >
               {(r.rating != null && r.rating > 0) || (r.reviews != null && r.reviews > 0) ? (
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex shrink-0 items-center gap-1">
                   {r.rating != null && r.rating > 0 && (
                     <>
                       <Star
@@ -211,7 +209,7 @@ export function RestaurantCard({
                 </span>
               ) : null}
               {r.distanceKm != null && (
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex shrink-0 items-center gap-1">
                   <MapPin className={compact ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
                   {r.distanceKm} km
                 </span>
@@ -220,19 +218,26 @@ export function RestaurantCard({
           ) : null}
           {r.area && (
             <p
-              className={`mt-1 line-clamp-2 text-muted-foreground ${compact ? 'text-[11px] leading-4' : 'text-xs'}`}
+              className={`mt-1 truncate text-muted-foreground ${compact ? 'text-[11px] leading-4' : 'text-xs'}`}
             >
               {r.area}
             </p>
           )}
-          {r.hours && (
+          {r.open != null ? (
+            <span
+              className={`mt-1.5 inline-flex items-center gap-1.5 font-medium ${compact ? 'text-[11px]' : 'text-xs'} ${r.open ? 'text-primary' : 'text-muted-foreground'}`}
+            >
+              <Clock className={compact ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
+              {r.open ? 'Đang mở' : 'Đã đóng'}
+            </span>
+          ) : r.hours ? (
             <span
               className={`mt-1.5 inline-flex items-center gap-1.5 text-muted-foreground ${compact ? 'text-[11px]' : 'text-xs'}`}
             >
               <Clock className={compact ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
               {r.hours}
             </span>
-          )}
+          ) : null}
         </div>
       </div>
       <div className={`border-t border-border/60 ${compact ? 'mt-2.5 pt-2' : 'mt-4 pt-3'}`}>

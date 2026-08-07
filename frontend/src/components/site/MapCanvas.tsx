@@ -174,7 +174,7 @@ export function MapCanvas({
       <style>{`.bep-map-marker-shell{background:transparent!important;border:0!important}.bep-map-marker{display:grid;place-items:center;width:30px;height:30px;border-radius:999px 999px 999px 0;background:#f97316;border:3px solid #fff;box-shadow:0 3px 10px rgba(67,20,7,.5),0 0 0 2px rgba(255,255,255,.72);transform:rotate(-45deg);transition:transform .2s,box-shadow .2s,opacity .2s,filter .2s}.bep-map-marker-core{width:9px;height:9px;border-radius:999px;background:#fff;transform:rotate(45deg);box-shadow:0 0 0 1px rgba(124,45,18,.25)}.bep-map-marker-is-active .bep-map-marker{transform:rotate(-45deg) scale(1.42);box-shadow:0 0 0 8px rgba(249,115,22,.2),0 5px 16px rgba(124,45,18,.5);animation:bep-marker-pulse 1.5s ease-in-out infinite}.bep-map-marker-is-muted{opacity:.82;filter:saturate(.9)}@keyframes bep-marker-pulse{0%,100%{box-shadow:0 0 0 5px rgba(249,115,22,.18),0 5px 16px rgba(124,45,18,.45)}50%{box-shadow:0 0 0 11px rgba(249,115,22,.04),0 5px 20px rgba(124,115,18,.55)}}`}</style>
       <div ref={mapRef} className="h-full w-full" />
       {selected && (
-        <div className="absolute bottom-4 left-4 right-4 z-[500] max-w-sm rounded-2xl border border-primary/30 bg-card/95 p-3 shadow-lift backdrop-blur-sm">
+        <div className="absolute right-4 top-4 z-[500] max-w-sm rounded-2xl border border-primary/30 bg-card/95 p-3 shadow-lift backdrop-blur-sm">
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-[.16em] text-primary">
             Đang hiển thị trên bản đồ
           </div>
