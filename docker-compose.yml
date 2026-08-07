@@ -80,6 +80,26 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  crawler:
+    profiles: [production]
+    build:
+      context: .
+      dockerfile: crawler/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-food_app}:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/${POSTGRES_DB:-food_app}}
+      CRAWL_CITY: ${CRAWL_CITY:-Ho Chi Minh City}
+      CRAWL_DISTRICTS: ${CRAWL_DISTRICTS:-}
+      CRAWL_LIMIT_PER_QUERY: ${CRAWL_LIMIT_PER_QUERY:-10}
+      CRAWL_MAX_QUERIES: ${CRAWL_MAX_QUERIES:-500}
+      CRAWL_MAX_SCROLL_ATTEMPTS: ${CRAWL_MAX_SCROLL_ATTEMPTS:-20}
+      CRAWL_MAX_REVIEWS_PER_PLACE: ${CRAWL_MAX_REVIEWS_PER_PLACE:-5}
+      CRAWL_HEADLESS: ${CRAWL_HEADLESS:-true}
+      CRAWL_HEARTBEAT_SECONDS: ${CRAWL_HEARTBEAT_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
   frontend:
     profiles: [production]
     build:
