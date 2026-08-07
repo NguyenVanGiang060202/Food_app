@@ -379,8 +379,7 @@ export class GoogleMapsPlaywrightCrawler {
               url: image.currentSrc || image.src,
               altText: image.alt || undefined,
             }))
-            .filter((image) => image.url && !image.url.includes('googleusercontent.com/googlelogo'))
-            .slice(0, 10);
+            .slice(0, 20);
 
           return result;
         },

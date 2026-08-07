@@ -129,8 +129,26 @@ export function normalizeCategorySlug(category: string | undefined | null): stri
 
 export function normalizeGoogleImageUrl(url: string | undefined | null): string | undefined {
   if (!url) return undefined;
+  if (!isRestaurantPhotoUrl(url)) return undefined;
   if (!url.includes('googleusercontent.com')) return url;
   return url.replace(/=[^/?]+$/, '');
+}
+
+const MAX_IMAGE_URL_LENGTH = 2000;
+
+export function isRestaurantPhotoUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  if (url.length > MAX_IMAGE_URL_LENGTH) return false;
+  const blocked =
+    url.includes('/maps/vt/') ||
+    url.includes('streetviewpixels') ||
+    url.includes('googlesyndication') ||
+    url.includes('google.com/maps') ||
+    url.includes('gstatic.com') ||
+    url.includes('googleusercontent.com/googlelogo') ||
+    url.includes('/a-/ALV-') ||
+    /\/a\/[^/]+\d+$/.test(url);
+  return !blocked;
 }
 
 export function normalizeImages(

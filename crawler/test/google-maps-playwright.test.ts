@@ -219,6 +219,20 @@ test('normalizeImages keeps non-Google URLs unchanged', () => {
   assert.deepEqual(images, [{ url: 'https://example.com/photo.jpg', altText: undefined }]);
 });
 
+test('normalizeImages drops janky URLs that would overflow the unique index', () => {
+  const mapTile = `https://maps.googleapis.com/maps/vt?pb=!1m18!1m12!1m3!1d${'3'.repeat(3000)}`;
+  const streetView =
+    'https://streetviewpixels-pa.googleapis.com/v1/thumbnail?panoid=abc&cb_client=search&share=1&output=tile&w=600&h=400';
+  const images = normalizeImages([
+    { url: mapTile },
+    { url: streetView },
+    { url: 'https://lh3.googleusercontent.com/real-photo=w600-h400-k-no', altText: 'interior' },
+  ]);
+  assert.deepEqual(images, [
+    { url: 'https://lh3.googleusercontent.com/real-photo', altText: 'interior' },
+  ]);
+});
+
 test('Google Maps provider generates a deterministic external id when a result has no URL', async () => {
   const provider = new GoogleMapsPlaywrightProvider({
     crawlerFactory: () => ({
