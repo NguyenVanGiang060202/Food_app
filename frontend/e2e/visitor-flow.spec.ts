@@ -12,6 +12,19 @@ const restaurant = {
   distanceMeters: null,
 };
 
+// AskPage renders a responsive layout: on mobile (< lg) the results list and
+// chat are kept outside the view in interactive drawers/sheets instead of being
+// shown side-by-side. Helpers pick the element that is actually visible for the
+// active viewport (desktop vs mobile) and open the right drawer when needed.
+const isMobileProject = () => test.info().project.name === 'mobile';
+
+async function openResultsList(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: 'Danh sách' }).click();
+}
+
+const pickVisible = (locator: ReturnType<import('@playwright/test').Page['getByText']>) =>
+  isMobileProject() ? locator.last() : locator.first();
+
 async function mockPublicApi(
   page: import('@playwright/test').Page,
   options: { recommendations?: unknown[]; recommendationStatus?: number } = {},
@@ -71,7 +84,8 @@ test('visitor can ask for a recommendation and open restaurant detail', async ({
   await page.getByPlaceholder(/Bụng đang réo gì/).fill('hot soup');
   await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
 
-  await expect(page.getByText('Test Kitchen').first()).toBeVisible();
+  if (isMobileProject()) await openResultsList(page);
+  await expect(pickVisible(page.getByText('Test Kitchen'))).toBeVisible();
   await page.getByRole('link', { name: 'Xem chi tiết' }).first().click();
   await expect(page).toHaveURL(/\/restaurants\/restaurant-1$/);
   await expect(page.getByRole('heading', { name: 'Test Kitchen' })).toBeVisible();
@@ -79,27 +93,43 @@ test('visitor can ask for a recommendation and open restaurant detail', async ({
 
 test('visitor sees a useful empty state and can start again', async ({ page }) => {
   await mockPublicApi(page, { recommendations: [] });
+  const mobile = isMobileProject();
   await page.goto('/');
 
   await page.getByPlaceholder(/Bụng đang réo gì/).fill('unknown dish');
   await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
 
-  await expect(page.getByText(/Bếp chưa thấy quán hợp gu/).first()).toBeVisible();
+  if (mobile) await openResultsList(page);
+  await expect(pickVisible(page.getByText(/Bếp chưa thấy quán hợp gu/))).toBeVisible();
   await expect(page.getByRole('heading', { name: /Bụng đang/ })).not.toBeVisible();
-  await page.getByRole('button', { name: /Hỏi mẻ mới/ }).click();
+
+  if (mobile) {
+    await page.getByRole('button', { name: 'Đóng danh sách' }).click();
+    await page.getByRole('button', { name: /Bếp vừa trả lời|Bếp đang nấu/ }).click();
+    await page.getByRole('button', { name: 'Bắt đầu lại' }).click();
+  } else {
+    await page.getByRole('button', { name: /Hỏi mẻ mới/ }).click();
+  }
+
   await expect(page.getByRole('heading', { name: /Bụng đang/ })).toBeVisible();
   await expect(page.getByPlaceholder(/Bụng đang réo gì/)).toHaveValue('');
 });
 
 test('visitor sees a backend error state without a broken results layout', async ({ page }) => {
   await mockPublicApi(page, { recommendationStatus: 500 });
+  const mobile = isMobileProject();
   await page.goto('/');
 
   await page.getByPlaceholder(/Bụng đang réo gì/).fill('backend failure');
   await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
 
-  await expect(page.getByText(/Không thể kết nối với máy chủ/)).toBeVisible();
-  await expect(page.getByRole('button', { name: /Hỏi mẻ mới/ })).toBeVisible();
+  if (mobile) await page.getByRole('button', { name: /Bếp vừa trả lời|Bếp đang nấu/ }).click();
+  await expect(pickVisible(page.getByText(/Không thể kết nối với máy chủ/))).toBeVisible();
+  if (mobile) {
+    await expect(page.getByRole('button', { name: 'Bắt đầu lại' })).toBeVisible();
+  } else {
+    await expect(page.getByRole('button', { name: /Hỏi mẻ mới/ })).toBeVisible();
+  }
 });
 
 test('visitor can explore inspiration cards and hand the prompt to Bếp', async ({ page }) => {
@@ -136,8 +166,16 @@ test('visitor can explore inspiration cards and hand the prompt to Bếp', async
     .first()
     .click();
   await expect(page).toHaveURL(/\/?prompt=/);
-  await expect(page.getByText(/Quán hợp bụng/).first()).toBeVisible();
-  await expect(page.getByPlaceholder(/Bụng đang réo gì/)).toBeVisible();
+  if (isMobileProject()) {
+    await openResultsList(page);
+    await expect(pickVisible(page.getByText(/Quán hợp bụng/))).toBeVisible();
+    await page.getByRole('button', { name: 'Đóng danh sách' }).click();
+    await page.getByRole('button', { name: /Bếp vừa trả lời|Bếp đang nấu/ }).click();
+    await expect(page.getByRole('textbox', { name: /Bụng đang réo gì/ })).toBeVisible();
+  } else {
+    await expect(pickVisible(page.getByText(/Quán hợp bụng/))).toBeVisible();
+    await expect(page.getByPlaceholder(/Bụng đang réo gì/)).toBeVisible();
+  }
 });
 
 test('visitor can navigate between discovery routes', async ({ page }) => {
