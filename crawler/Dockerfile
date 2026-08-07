@@ -6,7 +6,7 @@ COPY package.json package-lock.json ./
 COPY backend/package.json backend/package.json
 COPY frontend/package.json frontend/package.json
 COPY crawler/package.json crawler/package.json
-RUN npm ci --workspace crawler --include-workspace-root
+RUN npm ci
 COPY crawler crawler
 RUN npm run build --workspace crawler
 
