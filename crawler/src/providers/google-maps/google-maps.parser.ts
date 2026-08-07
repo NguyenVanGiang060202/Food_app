@@ -39,6 +39,8 @@ export function parseRating(text: string | undefined | null): number | undefined
   return Number.isFinite(val) && val >= 0 && val <= 5 ? val : undefined;
 }
 
+const MAX_REVIEW_COUNT = 1_000_000;
+
 export function parseReviewCount(text: string | undefined | null): number | undefined {
   if (!text) return undefined;
   const cleaned = text.trim();
@@ -48,7 +50,8 @@ export function parseReviewCount(text: string | undefined | null): number | unde
     const digits = group.replace(/[^0-9]/g, '');
     if (!digits) return undefined;
     const val = Number(digits);
-    return Number.isFinite(val) && val >= 0 ? val : undefined;
+    if (!Number.isFinite(val) || val < 0 || val > MAX_REVIEW_COUNT) return undefined;
+    return val;
   };
 
   const parenthesized = cleaned.match(/[([]\s*(\d[\d.,]*)\s*[)\]]/);

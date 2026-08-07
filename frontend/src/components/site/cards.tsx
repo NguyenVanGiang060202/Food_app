@@ -4,6 +4,7 @@ import { formatVnd } from '@/lib/food-data';
 import { Link } from 'react-router-dom';
 import { SaveRestaurantButton } from './SaveRestaurantButton';
 import { Skeleton } from '../ui/skeleton';
+import { SmartImage } from './SmartImage';
 
 // Mirrors RestaurantCard layout (image aspect + text + footer) so it reserves
 // the same height and prevents layout shift while restaurant data loads.
@@ -44,10 +45,9 @@ export function DishCard({ dish, size = 'md' }: { dish: Dish; size?: 'sm' | 'md'
       <div
         className={`relative overflow-hidden ${size === 'lg' ? 'aspect-[4/5]' : 'aspect-[4/3]'}`}
       >
-        <img
+        <SmartImage
           src={dish.image}
           alt={dish.name}
-          loading="lazy"
           className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
         />
         {dish.rating > 0 && (
@@ -106,10 +106,9 @@ export function RestaurantCard({
           className="block aspect-[2.5/1] shrink-0 overflow-hidden rounded-lg bg-muted"
         >
           {r.image ? (
-            <img
+            <SmartImage
               src={r.image}
               alt={r.name}
-              loading="lazy"
               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
@@ -162,10 +161,9 @@ export function RestaurantCard({
           className={`block aspect-square w-full self-start overflow-hidden rounded-xl bg-muted ${compact ? 'rounded-lg' : ''}`}
         >
           {r.image ? (
-            <img
+            <SmartImage
               src={r.image}
               alt={r.name}
-              loading="lazy"
               className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
             />
           ) : (

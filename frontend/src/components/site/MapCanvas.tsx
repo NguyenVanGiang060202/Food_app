@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Restaurant } from '@/lib/food-data';
 import { MapPin, Star } from 'lucide-react';
+import { SmartImage } from './SmartImage';
 
 const HO_CHI_MINH_CENTER: L.LatLngTuple = [10.8231, 106.6297];
 const HO_CHI_MINH_BOUNDS = L.latLngBounds([10.55, 106.25], [11.25, 107.05]);
@@ -179,7 +180,7 @@ export function MapCanvas({
           </div>
           <div className="flex gap-3">
             {selected.image ? (
-              <img
+              <SmartImage
                 src={selected.image}
                 alt={selected.name}
                 className="h-16 w-16 rounded-xl object-cover"

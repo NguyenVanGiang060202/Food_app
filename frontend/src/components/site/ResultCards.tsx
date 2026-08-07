@@ -2,6 +2,7 @@ import { MapPin, Star, Clock } from 'lucide-react';
 import type { Dish, Restaurant } from '@/lib/food-data';
 import { Link } from 'react-router-dom';
 import { SaveRestaurantButton } from './SaveRestaurantButton';
+import { SmartImage } from './SmartImage';
 
 const vnd = (n: number) => (n > 0 ? `${Math.round(n / 1000)}k₫` : null);
 
@@ -12,10 +13,9 @@ export function DishResult({ id, dish }: { id: string; dish?: Dish }) {
       to={`/dishes/${encodeURIComponent(dish.id)}`}
       className="group flex gap-3 rounded-xl border border-border bg-card p-2 transition-colors hover:border-primary/50"
     >
-      <img
+      <SmartImage
         src={dish.image}
         alt={dish.name}
-        loading="lazy"
         className="h-16 w-16 shrink-0 rounded-lg object-cover"
       />
       <div className="min-w-0 py-0.5">
@@ -82,10 +82,9 @@ export function RestaurantResult({
               }}
               className="block aspect-square w-full self-start overflow-hidden rounded-lg bg-muted text-left"
             >
-              <img
-                src={r.image ?? '/no-photo.svg'}
+              <SmartImage
+                src={r.image}
                 alt={r.image ? r.name : 'Chưa có ảnh'}
-                loading="lazy"
                 className="h-full w-full object-cover"
               />
             </button>
@@ -95,10 +94,9 @@ export function RestaurantResult({
               onClick={(event) => event.stopPropagation()}
               className="block aspect-square w-full self-start overflow-hidden rounded-lg bg-muted"
             >
-              <img
-                src={r.image ?? '/no-photo.svg'}
+              <SmartImage
+                src={r.image}
                 alt={r.image ? r.name : 'Chưa có ảnh'}
-                loading="lazy"
                 className="h-full w-full object-cover"
               />
             </Link>

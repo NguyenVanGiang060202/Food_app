@@ -3,6 +3,7 @@ import { ArrowUpRight, ChevronDown, Clock, MapPin, SlidersHorizontal, Star, X } 
 import { Link } from 'react-router-dom';
 import { Header } from '@/components/site/Header';
 import { MapCanvas } from '@/components/site/MapCanvas';
+import { SmartImage } from '@/components/site/SmartImage';
 import type { Restaurant } from '@/lib/food-data';
 import { listRestaurants } from '@/lib/api';
 import { attrLabel, distanceOptions, filterGroups } from '@/lib/taste-filters';
@@ -349,7 +350,7 @@ export function MapPage() {
                     className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg"
                   >
                     {restaurant.image ? (
-                      <img
+                      <SmartImage
                         src={restaurant.image}
                         alt={restaurant.name}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"

@@ -293,6 +293,7 @@ export class GoogleMapsPlaywrightCrawler {
             images: [],
           };
 
+          const MAX_REVIEW_COUNT = 1_000_000;
           const parseCount = (raw: string | null | undefined): number | undefined => {
             if (!raw) return undefined;
             const cleaned = raw.trim();
@@ -301,7 +302,8 @@ export class GoogleMapsPlaywrightCrawler {
               const digits = group.replace(/[^0-9]/g, '');
               if (!digits) return undefined;
               const val = Number(digits);
-              return Number.isFinite(val) && val >= 0 ? val : undefined;
+              if (!Number.isFinite(val) || val < 0 || val > MAX_REVIEW_COUNT) return undefined;
+              return val;
             };
             const parenthesized = cleaned.match(/[([]\s*(\d[\d.,]*)\s*[)\]]/);
             if (parenthesized) return toCount(parenthesized[1]);
