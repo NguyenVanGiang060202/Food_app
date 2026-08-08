@@ -104,7 +104,7 @@ test('visitor sees a useful empty state and can start again', async ({ page }) =
   await expect(page.getByRole('heading', { name: /Bụng đang/ })).not.toBeVisible();
 
   if (mobile) {
-    await page.getByRole('button', { name: 'Đóng danh sách' }).click();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: /Bếp vừa trả lời|Bếp đang nấu/ }).click();
     await page.getByRole('button', { name: 'Bắt đầu lại' }).click();
   } else {
@@ -169,7 +169,7 @@ test('visitor can explore inspiration cards and hand the prompt to Bếp', async
   if (isMobileProject()) {
     await openResultsList(page);
     await expect(pickVisible(page.getByText(/Quán hợp bụng/))).toBeVisible();
-    await page.getByRole('button', { name: 'Đóng danh sách' }).click();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: /Bếp vừa trả lời|Bếp đang nấu/ }).click();
     await expect(page.getByRole('textbox', { name: /Bụng đang réo gì/ })).toBeVisible();
   } else {

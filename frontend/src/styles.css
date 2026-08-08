@@ -171,6 +171,21 @@
   }
 }
 
+/* Rendering consistency between Chrome/Firefox device emulation and a real
+   phone: prevent text auto-shrink, remove the tap highlight and the
+   300ms double-tap zoom delay so taps match what emulation shows. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a,
+button,
+[role='button'] {
+  touch-action: manipulation;
+}
+
 @utility container-page {
   width: 100%;
   margin-inline: auto;
@@ -640,6 +655,44 @@
   }
   50% {
     opacity: 0.55;
+  }
+}
+
+/* Pinned/full-screen UI with a `vh` → `dvh`/`svh` fallback pair, so it stays
+   correct on real phones even when the browser chrome is visible. */
+.h-full-dvh {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.h-90-svh {
+  height: 90vh;
+  height: 90svh;
+}
+
+/* ---------- Dynamic viewport unification ----------
+   DevTools device emulation renders `100vh` with a FIXED viewport height,
+   but a real phone's browser URL bar shrinks/expands the visual viewport,
+   so full-screen UI measured in `vh` is taller (or shorter) than what the
+   user actually sees. Swapping to dynamic viewport units (`dvh`/`svh`) keeps
+   device emulation and a physical phone rendering the same layout. Rules in
+   this layer override Tailwind's `h-screen`/`min-h-screen` utilities and
+   always keep a `vh` fallback for older browsers. */
+@supports (height: 100dvh) {
+  .h-screen {
+    height: 100dvh;
+  }
+
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}
+
+/* Pinned UI (bottom sheets, overlays) should fit inside the *small* viewport
+   so nothing hides under the browser chrome on a real phone. */
+@supports (height: 100svh) {
+  .h-svh-fallback {
+    height: 100svh;
   }
 }
 

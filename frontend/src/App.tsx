@@ -126,34 +126,110 @@ function DiscoverPage() {
           >
             {busy
               ? Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="w-64 shrink-0 snap-start">
+                  <div key={index} className="h-full w-64 shrink-0 snap-start">
                     <RestaurantCardSkeleton />
                   </div>
                 ))
               : catalog.map((restaurant) => (
-                  <div key={restaurant.id} className="w-64 shrink-0 snap-start">
+                  <div key={restaurant.id} className="h-full w-64 shrink-0 snap-start">
                     <RestaurantCard r={restaurant} />
                   </div>
                 ))}
           </div>
           {canScrollBack && (
             <div className="pointer-events-none absolute inset-y-0 left-0 flex w-24 items-center justify-start bg-gradient-to-r from-background to-transparent">
-              <span className="ml-1 grid h-8 w-8 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-sm">
+              <button
+                type="button"
+                aria-label="Quán trước"
+                onClick={() => scrollRail(-1)}
+                className="pointer-events-auto ml-1 grid h-8 w-8 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+              >
                 <ChevronLeft className="h-4 w-4" />
-              </span>
+              </button>
             </div>
           )}
           {canScroll && (
             <div className="pointer-events-none absolute inset-y-0 right-0 flex w-24 items-center justify-end bg-gradient-to-l from-background to-transparent">
-              <span className="mr-1 grid h-8 w-8 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-sm">
+              <button
+                type="button"
+                aria-label="Quán tiếp theo"
+                onClick={() => scrollRail(1)}
+                className="pointer-events-auto mr-1 grid h-8 w-8 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+              >
                 <ChevronRight className="h-4 w-4" />
-              </span>
+              </button>
             </div>
           )}
         </div>
         {!busy && catalog.length === 0 && (
           <p className="mt-6 text-sm text-muted-foreground">Bếp chưa có quán để dọn ra.</p>
         )}
+      </section>
+      <section className="container-page py-16">
+        <Reveal>
+          <div className="rounded-3xl border border-primary/15 bg-primary/5 p-7 md:p-10">
+            <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
+              <div>
+                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-primary">
+                  <CalendarDays className="h-4 w-4" /> Gợi ý theo mùa
+                </div>
+                <h2 className="mt-2 font-display text-3xl">Cuối tuần này ăn gì?</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                  Hỏi Bếp về brunch, món ngày mưa, đồ uống mùa hè hoặc bất kỳ cảm hứng theo mùa nào
+                  bạn đang nghĩ tới.
+                </p>
+              </div>
+              <Link
+                to={`/?prompt=${encodeURIComponent('Gợi ý những địa điểm phù hợp cho cuối tuần này, gần tôi.')}`}
+                className="inline-flex shrink-0 items-center gap-2 rounded-full bg-foreground px-5 py-3 text-sm font-medium text-background hover:opacity-90"
+              >
+                Gợi ý cho tôi <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+      <section className="container-page py-16">
+        <Reveal>
+          <div className="text-xs uppercase tracking-widest text-muted-foreground">
+            Chọn theo cảm hứng
+          </div>
+          <h2 className="mt-2 font-display text-3xl">Không biết gọi gì? Bắt đầu từ một cảm giác.</h2>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                title: 'Nóng và có nước',
+                text: 'Phở, bún, mì và những món ấm bụng.',
+                query: 'món nóng có nước',
+              },
+              {
+                title: 'Ăn nhẹ buổi chiều',
+                text: 'Một món vừa đủ, không quá nặng bụng.',
+                query: 'ăn nhẹ',
+              },
+              {
+                title: 'Cay cho tỉnh táo',
+                text: 'Đậm vị hơn cho ngày cần năng lượng.',
+                query: 'món cay',
+              },
+              {
+                title: 'Bữa trưa chắc bụng',
+                text: 'Gợi ý nhanh cho một bữa ăn tử tế.',
+                query: 'bữa trưa',
+              },
+            ].map((mood) => (
+              <Link
+                key={mood.title}
+                to={`/?prompt=${encodeURIComponent(mood.query)}`}
+                className="rounded-2xl border border-border bg-card p-5 shadow-soft transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lift"
+              >
+                <div className="font-display text-xl">{mood.title}</div>
+                <p className="mt-2 text-sm leading-5 text-muted-foreground">{mood.text}</p>
+                <span className="mt-5 inline-block text-xs font-medium text-primary">Hỏi Bếp →</span>
+              </Link>
+            ))}
+          </div>
+        </Reveal>
       </section>
       <section className="bg-ink text-background">
         <div className="container-page py-16">
@@ -619,7 +695,6 @@ const router = createBrowserRouter([
         }
       >
         <SourceMapPage />
-        <Footer />
       </Suspense>
     ),
   },

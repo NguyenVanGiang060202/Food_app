@@ -19,7 +19,7 @@ export function Header() {
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
-        className="sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur-md"
+        className="md:sticky md:top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur-md"
       >
         <div className="container-page flex h-16 items-center gap-6">
           <Link to="/" className="flex shrink-0 items-center gap-2">
@@ -78,7 +78,7 @@ function BottomNav() {
   return (
     <nav
       aria-label="Điều hướng trên thiết bị di động"
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-background/95 backdrop-blur-md md:hidden"
+      className="fixed inset-x-0 bottom-0 z-[1300] grid grid-cols-5 border-t border-border bg-background/95 backdrop-blur-md md:hidden"
     >
       {items.map((item) => (
         <NavLink

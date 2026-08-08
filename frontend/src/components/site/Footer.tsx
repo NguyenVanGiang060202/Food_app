@@ -1,16 +1,14 @@
 import { Link } from 'react-router-dom';
 
-type FooterLink = { label: string; to: string };
-
 export function Footer() {
   return (
-    <footer className="mt-24 border-t border-border/60 bg-parchment/60">
-      <div className="container-page grid gap-10 py-14 md:grid-cols-4">
-        <div>
+    <footer className="mt-16 border-t border-border/60 bg-parchment/60">
+      <div className="container-page grid grid-cols-2 gap-x-6 gap-y-8 py-10 md:grid-cols-4 md:py-14">
+        <div className="col-span-2 md:col-span-1">
           <div className="font-display text-2xl">
             Bếp<span className="text-primary">.</span>
           </div>
-          <p className="mt-3 max-w-xs text-sm text-muted-foreground">
+          <p className="mt-3 hidden max-w-xs text-sm text-muted-foreground md:block">
             Hỏi một câu, chốt một bữa. Bếp bắt đầu từ cơn thèm của bạn rồi tìm món và quán hợp gu.
           </p>
         </div>
@@ -40,13 +38,13 @@ export function Footer() {
               { label: 'Gõ cửa Bếp', to: 'mailto:hello@none.food' },
             ],
           },
-        ].map((col) => (
-          <div key={col.title}>
+        ].map((col, index) => (
+          <div key={col.title} className={index === 2 ? 'hidden md:block' : ''}>
             <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
               {col.title}
             </div>
-            <ul className="mt-4 space-y-2 text-sm">
-              {col.items.map((item: FooterLink) => (
+            <ul className="mt-3 space-y-1.5 text-sm">
+              {col.items.map((item) => (
                 <li key={item.label}>
                   {item.to.startsWith('mailto:') ? (
                     <a
@@ -70,14 +68,9 @@ export function Footer() {
         ))}
       </div>
       <div className="border-t border-border/60">
-        <div className="container-page flex flex-col items-start justify-between gap-2 py-5 text-xs text-muted-foreground md:flex-row md:items-center">
-          <div>© {new Date().getFullYear()} Bếp - hỏi một câu, chốt một bữa.</div>
-          <div className="flex gap-4">
-            <span>Dữ liệu để tham khảo trước khi xách bụng đi ăn</span>
-            <a href="mailto:hello@none.food" className="hover:text-foreground">
-              Gõ cửa Bếp
-            </a>
-          </div>
+        <div className="container-page flex flex-col items-start justify-between gap-2 py-4 text-xs text-muted-foreground md:flex-row md:items-center">
+          <span>© {new Date().getFullYear()} Bếp - hỏi một câu, chốt một bữa.</span>
+          <span>Dữ liệu để tham khảo trước khi xách bụng đi ăn</span>
         </div>
       </div>
     </footer>

@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, ChevronDown, Clock, MapPin, SlidersHorizontal, Star, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  ArrowUpRight,
+  ChevronDown,
+  Clock,
+  ListFilter,
+  MapPin,
+  SlidersHorizontal,
+  Star,
+  X,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Header } from '@/components/site/Header';
 import { MapCanvas } from '@/components/site/MapCanvas';
@@ -24,7 +34,7 @@ export function MapPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [view, setView] = useState<'map' | 'list'>('map');
+  const [mobileListOpen, setMobileListOpen] = useState(false);
   const locationEpochRef = useRef(0);
 
   useEffect(() => {
@@ -46,6 +56,15 @@ export function MapPage() {
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
     );
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMobileListOpen(false);
+      setShowFilters(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -136,10 +155,124 @@ export function MapPage() {
     { label: 'Nhẹ bụng', attrs: ['ăn nhẹ', 'nhẹ bụng'] },
     { label: 'Sát bên', attrs: [], maxDistance: 2 },
   ];
+  const listPane = (
+    <>
+      {loadError && (
+        <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          <p>Không thể tải dữ liệu từ backend.</p>
+          <button
+            onClick={() => setReloadKey((value) => value + 1)}
+            className="mt-3 rounded-full bg-foreground px-4 py-2 text-sm text-background"
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
+      {loading && (
+        <div className="rounded-2xl border border-border p-6 text-center text-sm text-muted-foreground">
+          {locationBusy ? 'Đang lấy vị trí…' : 'Đang tải quán…'}
+        </div>
+      )}
+      {!location && !loading && (
+        <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          <p>Cho phép vị trí để xem các quán trong bán kính 5km.</p>
+          <button
+            onClick={locate}
+            className="mt-3 rounded-full bg-foreground px-4 py-2 text-sm text-background"
+          >
+            Dùng vị trí
+          </button>
+        </div>
+      )}
+      {items.map((restaurant) => (
+        <article
+          key={restaurant.id}
+          onClick={() => setActive(restaurant.id)}
+          onMouseEnter={() => setActive(restaurant.id)}
+          onMouseLeave={() => setActive(null)}
+          className={`group cursor-pointer overflow-hidden rounded-xl border bg-card shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lift ${active === restaurant.id ? 'border-primary ring-2 ring-primary/10' : 'border-border'}`}
+        >
+          <div className="flex gap-2.5 p-2.5">
+            <Link
+              to={`/restaurants/${restaurant.id}`}
+              className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg"
+            >
+              {restaurant.image ? (
+                <SmartImage
+                  src={restaurant.image}
+                  alt={restaurant.name}
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              ) : (
+                <img
+                  src="/no-photo.svg"
+                  alt="Chưa có ảnh"
+                  className="h-full w-full object-cover"
+                />
+              )}{' '}
+              {restaurant.rating != null && restaurant.rating > 0 && (
+                <span className="absolute bottom-1 left-1 rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-medium">
+                  <Star className="mr-0.5 inline h-2.5 w-2.5 fill-primary text-primary" />
+                  {restaurant.rating}
+                </span>
+              )}
+            </Link>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-[9px] uppercase tracking-[.14em] text-muted-foreground">
+                    {restaurant.cuisine.slice(0, 2).join(' · ')}
+                  </div>
+                  <Link
+                    to={`/restaurants/${restaurant.id}`}
+                    className="mt-0.5 block truncate font-display text-base hover:text-primary"
+                  >
+                    {restaurant.name}
+                  </Link>
+                </div>
+                <SaveRestaurantButton restaurantId={restaurant.id} size="compact" />
+              </div>
+              <div className="mt-1 flex min-w-0 items-center gap-x-2 truncate text-[11px] text-muted-foreground">
+                {restaurant.distanceKm != null && (
+                  <span className="shrink-0">
+                    <MapPin className="mr-0.5 inline h-2.5 w-2.5" />
+                    {restaurant.distanceKm}km
+                  </span>
+                )}
+                {restaurant.rating != null && restaurant.rating > 0 && (
+                  <span className="shrink-0">
+                    <Star className="mr-0.5 inline h-2.5 w-2.5 fill-primary text-primary" />
+                    {restaurant.rating}
+                  </span>
+                )}
+                <span className="truncate">{restaurant.area}</span>
+              </div>
+              {restaurant.sourceUrl && (
+                <a
+                  href={restaurant.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] font-medium text-primary hover:underline"
+                >
+                  Mở trong Google Maps <ArrowUpRight className="h-3 w-3 shrink-0" />
+                </a>
+              )}
+            </div>
+          </div>
+        </article>
+      ))}
+      {!loading && !loadError && location && items.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          Không có quán nào khớp bộ lọc trong bán kính {maxDistance}km.
+        </div>
+      )}
+    </>
+  );
   return (
-    <div className="h-screen overflow-hidden">
+    <div className="flex h-screen h-full-dvh flex-col overflow-hidden">
       <Header />
-      <main className="container-page flex h-[calc(100vh-4rem)] min-h-0 flex-col py-4 pb-20 md:pb-2">
+      <main className="container-page flex min-h-0 flex-1 flex-col py-4 pb-20 md:pb-2">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
           <div>
             <div className="text-xs font-bold uppercase tracking-[.18em] text-primary">
@@ -161,22 +294,6 @@ export function MapPage() {
                 {activeCount}
               </span>
             )}
-          </button>
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-1 rounded-full border border-border bg-card p-1 lg:hidden">
-          <button
-            type="button"
-            onClick={() => setView('map')}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium ${view === 'map' ? 'bg-primary text-white' : 'text-muted-foreground'}`}
-          >
-            Bản đồ
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('list')}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium ${view === 'list' ? 'bg-primary text-white' : 'text-muted-foreground'}`}
-          >
-            Danh sách
           </button>
         </div>
         {showFilters && (
@@ -325,123 +442,10 @@ export function MapPage() {
           </div>
         )}
         <div className="mt-4 grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_1.1fr]">
-          <div
-            className={`min-h-0 space-y-2 overflow-y-auto pr-1 ${view === 'list' ? 'block' : 'hidden'} lg:block`}
-          >
-            {loadError && (
-              <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                <p>Không thể tải dữ liệu từ backend.</p>
-                <button
-                  onClick={() => setReloadKey((value) => value + 1)}
-                  className="mt-3 rounded-full bg-foreground px-4 py-2 text-sm text-background"
-                >
-                  Thử lại
-                </button>
-              </div>
-            )}
-            {loading && (
-              <div className="rounded-2xl border border-border p-6 text-center text-sm text-muted-foreground">
-                {locationBusy ? 'Đang lấy vị trí…' : 'Đang tải quán…'}
-              </div>
-            )}
-            {!location && !loading && (
-              <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                <p>Cho phép vị trí để xem các quán trong bán kính 5km.</p>
-                <button
-                  onClick={locate}
-                  className="mt-3 rounded-full bg-foreground px-4 py-2 text-sm text-background"
-                >
-                  Dùng vị trí
-                </button>
-              </div>
-            )}
-            {items.map((restaurant) => (
-              <article
-                key={restaurant.id}
-                onClick={() => setActive(restaurant.id)}
-                onMouseEnter={() => setActive(restaurant.id)}
-                onMouseLeave={() => setActive(null)}
-                className={`group cursor-pointer overflow-hidden rounded-xl border bg-card shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lift ${active === restaurant.id ? 'border-primary ring-2 ring-primary/10' : 'border-border'}`}
-              >
-                <div className="flex gap-2.5 p-2.5">
-                  <Link
-                    to={`/restaurants/${restaurant.id}`}
-                    className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg"
-                  >
-                    {restaurant.image ? (
-                      <SmartImage
-                        src={restaurant.image}
-                        alt={restaurant.name}
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <img
-                        src="/no-photo.svg"
-                        alt="Chưa có ảnh"
-                        className="h-full w-full object-cover"
-                      />
-                    )}{' '}
-                    {restaurant.rating != null && restaurant.rating > 0 && (
-                      <span className="absolute bottom-1 left-1 rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-medium">
-                        <Star className="mr-0.5 inline h-2.5 w-2.5 fill-primary text-primary" />
-                        {restaurant.rating}
-                      </span>
-                    )}
-                  </Link>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-[9px] uppercase tracking-[.14em] text-muted-foreground">
-                          {restaurant.cuisine.slice(0, 2).join(' · ')}
-                        </div>
-                        <Link
-                          to={`/restaurants/${restaurant.id}`}
-                          className="mt-0.5 block truncate font-display text-base hover:text-primary"
-                        >
-                          {restaurant.name}
-                        </Link>
-                      </div>
-                      <SaveRestaurantButton restaurantId={restaurant.id} size="compact" />
-                    </div>
-                    <div className="mt-1 flex min-w-0 items-center gap-x-2 truncate text-[11px] text-muted-foreground">
-                      {restaurant.distanceKm != null && (
-                        <span className="shrink-0">
-                          <MapPin className="mr-0.5 inline h-2.5 w-2.5" />
-                          {restaurant.distanceKm}km
-                        </span>
-                      )}
-                      {restaurant.rating != null && restaurant.rating > 0 && (
-                        <span className="shrink-0">
-                          <Star className="mr-0.5 inline h-2.5 w-2.5 fill-primary text-primary" />
-                          {restaurant.rating}
-                        </span>
-                      )}
-                      <span className="truncate">{restaurant.area}</span>
-                    </div>
-                    {restaurant.sourceUrl && (
-                      <a
-                        href={restaurant.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(event) => event.stopPropagation()}
-                        className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] font-medium text-primary hover:underline"
-                      >
-                        Mở trong Google Maps <ArrowUpRight className="h-3 w-3 shrink-0" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </article>
-            ))}
-            {!loading && !loadError && location && items.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                Không có quán nào khớp bộ lọc trong bán kính {maxDistance}km.
-              </div>
-            )}
+          <div className="hidden min-h-0 lg:block">
+            <div className="h-full space-y-2 overflow-y-auto pr-1">{listPane}</div>
           </div>
-          <div
-            className={`relative min-h-0 overflow-hidden rounded-2xl border border-border bg-parchment shadow-soft ${view === 'map' ? 'block' : 'hidden'} lg:block`}
-          >
+          <div className="relative isolate min-h-0 overflow-hidden rounded-2xl border border-border bg-parchment shadow-soft">
             <MapCanvas
               activeId={active}
               restaurants={items}
@@ -451,6 +455,61 @@ export function MapPage() {
           </div>
         </div>
       </main>
+      {!mobileListOpen && (
+        <div className="pointer-events-none fixed inset-x-3 bottom-24 z-[1200] flex justify-start lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileListOpen(true)}
+            className="pointer-events-auto relative inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-lift active:scale-[0.97]"
+          >
+            <ListFilter className="h-4 w-4" />
+            Danh sách
+            {items.length > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 grid min-w-4 place-items-center rounded-full bg-foreground px-1 py-px text-[10px] font-bold leading-4 text-background ring-2 ring-background">
+                {items.length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+      <AnimatePresence>
+        {mobileListOpen && (
+          <motion.div
+            className="fixed inset-x-0 bottom-0 z-50 lg:hidden"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+          >
+            <motion.div
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.4 }}
+              dragMomentum={false}
+              onDragEnd={(_event, info) => {
+                if (info.offset.y > 80 || info.velocity.y > 300)
+                  setMobileListOpen(false);
+              }}
+              className="flex h-[34svh] cursor-grab flex-col overflow-hidden rounded-t-[24px] border-x border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_60px_-20px_rgba(47,42,37,0.4)] active:cursor-grabbing"
+            >
+              <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
+                <div className="h-[3px] w-12 rounded-full bg-border" />
+                <div className="flex w-full items-center justify-between gap-3 px-3 pb-2 pt-2">
+                  <div className="text-sm font-medium">
+                    {items.length} quán · trong {maxDistance}km
+                  </div>
+                </div>
+              </div>
+              <div
+                onPointerDown={(event) => event.stopPropagation()}
+                className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 pt-1 pb-16"
+              >
+                {listPane}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -139,12 +139,14 @@ export function RestaurantCard({
             )}
             {r.area && <span className="truncate">{r.area}</span>}
           </div>
-          <Link
-            to={`/restaurants/${r.id}`}
-            className="mt-2 block truncate rounded-full bg-foreground px-2 py-1.5 text-center text-[10px] font-medium text-background hover:opacity-90"
-          >
-            Xem chi tiết
-          </Link>
+          <div className="mt-auto pt-2">
+            <Link
+              to={`/restaurants/${r.id}`}
+              className="block truncate rounded-full bg-foreground px-2 py-1.5 text-center text-[10px] font-medium text-background hover:opacity-90"
+            >
+              Xem chi tiết
+            </Link>
+          </div>
         </div>
       </article>
     );
@@ -153,7 +155,7 @@ export function RestaurantCard({
     <article
       className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-soft pressable transition-all hover:-translate-y-0.5 hover:shadow-lift active:scale-[0.99] ${compact ? 'p-2.5' : 'p-3'}`}
     >
-      <div className={`flex min-w-0 items-stretch ${compact ? 'gap-2.5' : 'gap-3'}`}>
+      <div className={`flex min-w-0 items-stretch flex-1 ${compact ? 'gap-2.5' : 'gap-3'}`}>
         <Link
           to={`/restaurants/${r.id}`}
           className={`block aspect-square shrink-0 self-start overflow-hidden rounded-xl bg-muted ${compact ? 'w-20 rounded-lg' : 'w-24 sm:w-32 md:w-36'}`}
@@ -240,7 +242,9 @@ export function RestaurantCard({
           ) : null}
         </div>
       </div>
-      <div className={`border-t border-border/60 ${compact ? 'mt-2.5 pt-2' : 'mt-4 pt-3'}`}>
+      <div
+        className={`shrink-0 border-t border-border/60 ${compact ? 'mt-2.5 pt-2' : 'mt-4 pt-3'}`}
+      >
         <Link
           to={`/restaurants/${r.id}`}
           className={`block w-full truncate rounded-full bg-foreground text-center font-medium text-background hover:opacity-90 ${compact ? 'px-2 py-1.5 text-[11px]' : 'px-3 py-2 text-xs'}`}
