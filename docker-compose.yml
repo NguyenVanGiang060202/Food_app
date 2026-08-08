@@ -26,6 +26,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
+      NODE_ENV: production
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-food_app}:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/${POSTGRES_DB:-food_app}}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}

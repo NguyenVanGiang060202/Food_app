@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { HttpErrorFilter } from './common/http-error.filter';
 import {
@@ -15,7 +16,8 @@ import {
 } from './common/http-security';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.set('trust proxy', 1);
   app.setGlobalPrefix('api/v1');
   const allowedOrigins = parseAllowedOrigins(process.env.APP_ORIGINS ?? process.env.APP_ORIGIN);
   assertProductionOrigins(allowedOrigins);
