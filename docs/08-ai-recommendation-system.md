@@ -143,6 +143,26 @@ Query embeddings are generated only for semantic-search requests that benefit fr
 
 ---
 
+### Runtime intent understanding
+
+"Hỏi bếp" turns a user's free-form Vietnamese into grounded SQL filters. The
+runtime LLM (`backend/src/modules/ai/`) parses the text into a bounded, validated
+JSON intent whose `categories` are restricted to the real category taxonomy
+(loaded from the database), then the existing keyword/structured retrieval in
+`RestaurantsRepository.list` selects the restaurants. The LLM never names
+restaurants directly, so it cannot invent candidates.
+
+- The provider is OpenAI-compatible (`AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL`,
+  default Gemini's OpenAI-compatible endpoint).
+- Every field is validated and rejected outside its contract (`category` slugs
+  only from the DB, `priceLevel` 1–4, `minRating` 3.0–5.0, `distanceKm` 1–60,
+  district as `Quận N`).
+- Provider outages, timeouts, or malformed responses return `null` and the
+  request uses the deterministic `interpretQuery` rules instead; retrieval
+  always falls through the same rank/fallback ladder.
+- `POST /search/interpret` exposes the parsed filters plus an `aiSummary` the
+  frontend renders as "Bếp nghe hiểu: …".
+
 ## 8. Hybrid Candidate Retrieval
 
 Candidate retrieval combines complementary methods rather than depending on a single score.

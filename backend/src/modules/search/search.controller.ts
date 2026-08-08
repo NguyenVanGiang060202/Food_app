@@ -19,6 +19,8 @@ import { RestaurantsService } from '../restaurants/restaurants.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { AuthService } from '../auth/auth.service';
 import type { AuthUser } from '../auth/auth.types';
+import { AiIntentService } from '../ai/ai-intent.service';
+import type { AiIntent } from '../ai/ai.types';
 
 interface InterpretedFilters {
   category?: string;
@@ -102,9 +104,22 @@ function interpretQuery(query: string): InterpretedFilters {
   return { ...(category ? { category } : {}), ...(district ? { district } : {}), attributes };
 }
 
+function firstFilterableCategory(intent: AiIntent | null, interpreted: InterpretedFilters): string | undefined {
+  if (intent && intent.categories.length) {
+    const fromIntent = intent.categories.find((slug) => FILTERABLE_CATEGORY_SLUGS.has(slug));
+    if (fromIntent) return fromIntent;
+  }
+  return interpreted.category && FILTERABLE_CATEGORY_SLUGS.has(interpreted.category)
+    ? interpreted.category
+    : undefined;
+}
+
 @Controller('search')
 export class SearchController {
-  constructor(private readonly restaurantsService: RestaurantsService) {}
+  constructor(
+    private readonly restaurantsService: RestaurantsService,
+    @Optional() private readonly aiIntent?: AiIntentService,
+  ) {}
   @Get()
   async search(@Query() query: ListRestaurantsQueryDto) {
     if (!query.query?.trim()) throw new BadRequestException('query is required.');
@@ -125,8 +140,42 @@ export class SearchController {
   }
 
   @Post('interpret')
-  interpret(@Body() body: InterpretSearchDto) {
-    return { data: { query: body.query, filters: interpretQuery(body.query) } };
+  async interpret(@Body() body: InterpretSearchDto) {
+    const intent = this.aiIntent?.isEnabled()
+      ? await this.aiIntent.interpret(body.query)
+      : null;
+    const interpreted = interpretQuery(body.query);
+    const filters: InterpretedFilters & {
+      priceLevel?: number;
+      minRating?: number;
+      openNow?: boolean;
+      distanceKm?: number;
+    } = {
+      ...(intent?.categories?.[0]
+        ? { category: intent.categories[0] }
+        : interpreted.category
+          ? { category: interpreted.category }
+          : {}),
+      ...(intent?.district
+        ? { district: intent.district }
+        : interpreted.district
+          ? { district: interpreted.district }
+          : {}),
+      attributes: interpreted.attributes,
+      ...(intent?.priceLevel ? { priceLevel: intent.priceLevel } : {}),
+      ...(intent?.minRating ? { minRating: intent.minRating } : {}),
+      ...(intent?.openNow === null || intent === null
+        ? {}
+        : { openNow: intent?.openNow }),
+      ...(intent?.distanceKm ? { distanceKm: intent.distanceKm } : {}),
+    };
+    return {
+      data: {
+        query: body.query,
+        aiSummary: intent?.summary ?? null,
+        filters,
+      },
+    };
   }
 }
 
@@ -135,30 +184,44 @@ export class RecommendationsController {
   constructor(
     private readonly restaurantsService: RestaurantsService,
     @Optional() private readonly auth?: AuthService,
+    @Optional() private readonly aiIntent?: AiIntentService,
   ) {}
   @Post()
   async recommend(@Body() body: RecommendationDto) {
     const interpreted = interpretQuery(body.query);
+    const intent = this.aiIntent?.isEnabled()
+      ? await this.aiIntent.interpret(body.query)
+      : null;
+    const category = firstFilterableCategory(intent, interpreted);
+    const district = body.filters?.area ?? intent?.district ?? interpreted.district;
+    const priceLevel = body.filters?.priceLevel ?? intent?.priceLevel ?? undefined;
+    const minRating = body.filters?.minRating ?? intent?.minRating ?? undefined;
+    const openNow = body.filters?.openNow ?? intent?.openNow ?? undefined;
+    const radiusMeters =
+      body.filters?.radiusMeters ??
+      (intent?.distanceKm ? intent.distanceKm * 1000 : undefined);
+    const tastes = [
+      ...(body.filters?.taste ?? []),
+      ...(intent?.tastes ?? []),
+      ...(intent?.dishes ?? []),
+    ];
     const filters = {
       query: body.query,
-      category:
-        interpreted.category && FILTERABLE_CATEGORY_SLUGS.has(interpreted.category)
-          ? interpreted.category
-          : undefined,
+      category,
       latitude: body.location?.latitude,
       longitude: body.location?.longitude,
-      radiusMeters: body.filters?.radiusMeters,
-      minRating: body.filters?.minRating,
-      priceLevel: body.filters?.priceLevel,
-      openNow: body.filters?.openNow,
+      radiusMeters,
+      minRating,
+      priceLevel,
+      openNow,
       sort: body.filters?.sort,
-      district: body.filters?.area ?? interpreted.district,
+      district,
       dishTypes: body.filters?.dishTypes?.map(
         (value) =>
           DISH_TYPE_ALIASES.find(([label]) => label === value.toLocaleLowerCase('vi-VN'))?.[1] ??
           value,
       ),
-      tastes: body.filters?.taste,
+      tastes,
       limit: body.limit,
     };
     let page = await this.restaurantsService.list(filters);
@@ -198,8 +261,14 @@ export class RecommendationsController {
         restaurant,
         explanation: this.explain(
           restaurant.categories.map((c) => c.slug),
-          interpreted,
-          body,
+          {
+            category,
+            district,
+            priceLevel,
+            openNow,
+            tastes,
+            location: body.location ? true : undefined,
+          },
         ),
       })),
     };
@@ -282,19 +351,24 @@ export class RecommendationsController {
 
   private explain(
     categories: string[],
-    interpreted: InterpretedFilters,
-    body: RecommendationDto,
+    applied: {
+      category?: string;
+      district?: string;
+      priceLevel?: number;
+      openNow?: boolean;
+      tastes?: string[];
+      location?: boolean;
+    },
   ): string | null {
     const reasons: string[] = [];
-    if (interpreted.category && categories.includes(interpreted.category))
-      reasons.push(`nhóm ${interpreted.category.replace('-', ' ')}`);
-    if (body.filters?.priceLevel !== undefined && body.filters.priceLevel !== null)
-      reasons.push(`mức giá ${body.filters.priceLevel}`);
-    if (body.filters?.openNow) reasons.push('đang mở cửa');
-    if (body.filters?.taste?.length) reasons.push(`khẩu vị ${body.filters.taste.join(', ')}`);
-    if (body.filters?.dishTypes?.length) reasons.push(`món ${body.filters.dishTypes.join(', ')}`);
-    if (body.filters?.area) reasons.push(`khu vực ${body.filters.area}`);
-    if (body.location) reasons.push('vị trí của bạn');
+    if (applied.category && categories.includes(applied.category))
+      reasons.push(`nhóm ${applied.category.replace('-', ' ')}`);
+    if (applied.priceLevel !== undefined && applied.priceLevel !== null)
+      reasons.push(`mức giá ${applied.priceLevel}`);
+    if (applied.openNow) reasons.push('đang mở cửa');
+    if (applied.tastes?.length) reasons.push(`khẩu vị ${applied.tastes.join(', ')}`);
+    if (applied.district) reasons.push(`khu vực ${applied.district}`);
+    if (applied.location) reasons.push('vị trí của bạn');
     return reasons.length ? `Phù hợp với ${reasons.join(', ')}.` : null;
   }
 }

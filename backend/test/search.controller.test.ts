@@ -99,6 +99,49 @@ test('unsupported cuisine aliases do not become impossible category filters', as
   assert.equal(calls[0].category, undefined);
 });
 
+test('recommendation uses the LLM intent when the AI service is enabled', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('ai-restaurant')]);
+    },
+  };
+  const aiIntent = {
+    isEnabled: () => true,
+    interpret: async () => ({
+      categories: ['bun'],
+      dishes: ['bún bò huế'],
+      tastes: ['nóng'],
+      district: 'Quận 1',
+      priceLevel: 3,
+      minRating: 4.4,
+      openNow: false,
+      distanceKm: 5,
+      summary: 'Bếp hiểu bạn muốn món bún.',
+    }),
+  };
+  const controller = new RecommendationsController(
+    databaseService as never,
+    undefined,
+    aiIntent as never,
+  );
+
+  const result = await controller.recommend({
+    query: 'món gì nóng bưng gần đây',
+    limit: 5,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].category, 'bun');
+  assert.equal(calls[0].priceLevel, 3);
+  assert.equal(calls[0].minRating, 4.4);
+  assert.equal(calls[0].openNow, false);
+  assert.equal(calls[0].radiusMeters, 5000);
+  assert.deepEqual(calls[0].tastes, ['nóng', 'bún bò huế']);
+  assert.match(result.data[0].explanation ?? '', /nóng/);
+});
+
 test('for-you uses all saved category and price preferences and removes duplicates', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const databaseService = {

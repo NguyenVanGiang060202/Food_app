@@ -61,12 +61,40 @@ Không cam kết tải cao, zero-downtime hoặc dữ liệu real-time.
 
 - Hiện tại `listSimilar` (backend `restaurants.repository.ts`) đã được tinh chỉnh để
   fallback bằng `name_similarity` + district/price khi DB thiếu dish/category.
-- **Khi crawler chạy đủ dữ liệu (dish + restaurant_category có số lượng thực)**,
-  cần kiểm tra lại section “Quán tương tự” ở `/restaurants/:id`:
-  - Verify overlap dish/category có phát huy không (không còn rơi vào fallback rating).
+- **Giải pháp data (đã làm một phần):** crawler Google Maps không đọc được
+  category/dish từ list page, và dish/embedding sẽ không bao giờ tự đầy nếu chỉ
+  chạy thêm crawl. Đã thêm bước **enrichment** one-shot
+  (`npm run enrich:once --workspace crawler`) gán `restaurant_category`
+  (classifier theo tên) + `dish` (lexicon theo tên/review), đều ghi `source` +
+  `confidence`, không ghi đè fact thật, có `enrichment_log`. Sau khi migrate
+  `022` + chạy enrichment, cần verify:
+  - Overlap dish/category có phát huy không (không còn rơi vào fallback rating).
   - Điều chỉnh lại trọng số `category_overlap`/`dish_overlap` nếu bị lấn át bởi
     `name_similarity` (×30).
   - Rà lại toàn bộ 3 anchor quán hiện có để đối chiếu kết quả.
+- **Đã làm:** bước sinh `restaurant_embedding` (`npm run embed:once --workspace
+  crawler`, docs/05 Stage 7) từ search-document deterministic (tên/category/dish/
+  khu vực/phân khúc giá), provider OpenAI-compatible (env
+  `EMBEDDING_BASE_URL/API_KEY/MODEL`), idempotent + `--refresh`, có
+  `enrichment_log`. **Cần hoàn thiện:** chọn model/dimension thật (docs dự kiến
+  Gemini Embedding) + bật provider bằng API key khi deploy, và sau đó mới cài
+  pgvector ANN index (`restaurant_embedding` HNSW/IVFFlat) theo kích thước
+  vector thực.
+
+### P0.2 “Hỏi bếp” chuyển từ tìm kiếm theo luật sang hiểu ý định (đã làm, cần key khi deploy)
+
+- Đã thêm runtime LLM intent parsing (`backend/src/modules/ai/`): câu tự nhiên →
+  JSON intent (`categories` từ category taxonomy thật trong DB, `dishes`,
+  `tastes`, `district`, `priceLevel`, `minRating`, `openNow`, `distanceKm`,
+  `summary`), provider OpenAI-compatible (`AI_BASE_URL` default Gemini
+  OpenAI-compatible endpoint, `AI_API_KEY`, `AI_MODEL`). Truy vấn vẫn chạy qua
+  `RestaurantsRepository.list` nên không bao giờ "bịa" quán. Provider lỗi /
+  chưa cấu hình → fallback deterministic `interpretQuery` như cũ. Frontend
+  hiển thị thêm chip giá/khoảng cách/đang mở + dòng "Bếp nghe hiểu: …".
+- **Cần làm khi deploy VPS:** khai báo `AI_API_KEY` (+`AI_BASE_URL`, `AI_MODEL`
+  nếu không dùng Gemini) trong `.env` của backend, rồi test thủ công Hỏi bếp
+  với vài câu khó ("món chay nhẹ gần quận 2 trong 5 km", "quán cafe yên tĩnh
+  làm việc cuối tuần").
 
 ### P0.1 Chốt dữ liệu và trải nghiệm demo
 

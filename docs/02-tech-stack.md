@@ -156,7 +156,16 @@ Gemini Flash is the initial model for latency- and cost-sensitive generative tas
 - Extracting structured attributes from unstructured text.
 - Classifying food categories and restaurant characteristics.
 - Producing concise recommendation explanations.
-- Interpreting natural-language search intent.
+- Interpreting natural-language search intent ("Hỏi bếp").
+
+The runtime intent interpreter (`backend/src/modules/ai/`, `AiIntentService`)
+calls an OpenAI-compatible `/chat/completions` endpoint (`AI_BASE_URL`, default
+Gemini's OpenAI-compatible endpoint, free tier OK). It converts the user's free
+text into a bounded JSON intent, validates it against the real category
+taxonomy, and feeds grounded SQL retrieval. When `AI_API_KEY` is empty or the
+provider fails, requests fall back to deterministic rule-based
+interpretation in `search.controller.ts`. Gemini Embedding is used for the
+offline crawler Stage 7 embeddings.
 
 ### Gemini Embedding
 

@@ -9,6 +9,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { SavedModule } from './modules/saved/saved.module';
+import { AiIntentService } from './modules/ai/ai-intent.service';
 
 @Module({
   imports: [DatabaseModule, CategoriesModule, AdminModule, AuthModule, SavedModule],
@@ -18,6 +19,6 @@ import { SavedModule } from './modules/saved/saved.module';
     SearchController,
     RecommendationsController,
   ],
-  providers: [RestaurantsService, RestaurantsRepository],
+  providers: [RestaurantsService, RestaurantsRepository, AiIntentService],
 })
 export class AppModule {}

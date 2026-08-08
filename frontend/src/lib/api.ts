@@ -172,7 +172,16 @@ export type RecommendationItem = {
 };
 export type InterpretedSearch = {
   query: string;
-  filters: { category?: string; district?: string; attributes: string[] };
+  aiSummary?: string | null;
+  filters: {
+    category?: string;
+    district?: string;
+    attributes: string[];
+    priceLevel?: number;
+    minRating?: number;
+    openNow?: boolean;
+    distanceKm?: number;
+  };
 };
 export type PreferenceMemory = { id: string; text: string };
 export type AiPreferences = {
