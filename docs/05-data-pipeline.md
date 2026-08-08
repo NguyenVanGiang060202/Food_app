@@ -178,7 +178,23 @@ Canonical updates follow explicit merge rules:
 
 ## 10. Stage 6: Enrichment
 
-This stage is designed but not executed by the current crawler worker.
+This stage is **partially implemented** as a one-shot offline CLI in the crawler
+workspace (`crawler/src/enrichment/`, run with
+`npm run enrich:once --workspace crawler`). It is deterministic and only fills
+gaps: it never overrides crawler/fixture-observed facts.
+
+- Category classification (`category-classifier.ts`): keyword rules over the
+  accent-free restaurant name, precision-first. Writes `restaurant_category`
+  with `source = 'enrichment:category:rules:v1'` and a confidence, only for
+  restaurants that have no category mapping yet.
+- Dish detection (`dish-extractor.ts`): a curated Vietnamese dish lexicon
+  matched against the restaurant name and visible review text. Writes `dish`
+  rows (price remains NULL — no price is inferred) with
+  `source = 'enrichment:dish:lexicon:v1'` and confidence, only for restaurants
+  that have no dishes yet.
+- Each run is recorded in `enrichment_log` (run type, model, params, status,
+  counts, failure message); `--dry-run` computes counts without writing.
+- Embedding generation (Stage 7) is not part of this implementation yet.
 
 Enrichment improves discovery quality after canonical storage. It is optional and must never prevent a valid restaurant from becoming available unless the enrichment is required by a data-quality rule.
 
@@ -198,8 +214,32 @@ AI-generated values must be marked with their generation source, model/version, 
 
 ## 11. Stage 7: Search Projection and Embedding Updates
 
-This stage is designed but not executed by the current crawler worker. The schema has
-`restaurant_embedding`, but no crawler runtime currently generates embeddings.
+This stage is **partially implemented** as a one-shot offline CLI in the crawler
+workspace (`crawler/src/embedding/`, run with `npm run embed:once --workspace
+crawler`, requires migration `023`). It generates vector embeddings from
+deterministic search documents and stores them in `restaurant_embedding`; it
+never mutates canonical data.
+
+- `search-document.ts` builds a versioned, deterministic embedding input
+  (name, normalized name, categories, dish names, district/city, price level)
+  and a SHA-256 `content_hash`. The embedding `model` in
+  `restaurant_embedding` records both the provider model and the template
+  version (`<provider>@doc:v1`), so model, dimension, and template are versioned
+  together (docs/08 section 7).
+- `embedding-provider.ts` is an internal provider interface implemented by an
+  OpenAI-compatible client (`/embeddings`). Configure via `EMBEDDING_BASE_URL`,
+  `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, and optional `EMBEDDING_DIMENSIONS`
+  (dimension mismatch is rejected before writing).
+- `embedding-loader.ts` backfills only restaurants with no vector for the active
+  model (an idempotent default). `--refresh` also re-embeds restaurants whose
+  content changed. Old vectors for the same `(restaurant, model)` are replaced,
+  so at most one active embedding exists per restaurant and model version.
+  Every run is recorded in `enrichment_log` with `run_type = 'embedding'`;
+  `--dry-run` computes counts without calling any provider.
+- Keyword/full-text projection and the pgvector ANN index are not implemented
+  yet (index dimensions must be chosen once the embedding model, document
+  template, and scale are fixed). The fallback similarity flow in
+  `backend/restaurants.repository.ts` remains the only item near search today.
 
 Search documents and vector embeddings are derived data. They are generated only after a canonical restaurant record is valid enough to search.
 

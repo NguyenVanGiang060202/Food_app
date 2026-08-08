@@ -65,7 +65,8 @@ foreach ($migration in @(
    'database/migrations/018_ensure_image_url_unique_index.sql',
    'database/migrations/019_nullable_review_count.sql',
    'database/migrations/020_add_user_role.sql',
-   'database/migrations/021_repair_missing_ai_preferences.sql'
+   'database/migrations/021_repair_missing_ai_preferences.sql',
+   'database/migrations/022_enrichment_provenance.sql'
 )) {
   $version = [System.IO.Path]::GetFileNameWithoutExtension($migration)
   $applied = [string](docker compose exec -T postgres psql -At -U $User -d $Database -c "SELECT EXISTS (SELECT 1 FROM schema_migration WHERE version = '$version');")
