@@ -160,6 +160,13 @@ export class GoogleMapsPlaywrightCrawler {
       await page.waitForTimeout(2000);
 
       const details = await this.extractDetailPanelData(page);
+      if (this.isMismatchedPanel(place.name, details.name)) {
+        // The detail panel did not switch to the requested place. Consuming
+        // its data would leak the previous place's review count, phone, etc.
+        // across many records (duplicated review_count in production data).
+        await this.closeDetailPanel(page);
+        return;
+      }
       if (details.reviewCount !== undefined) place.reviewCount = details.reviewCount;
       if (details.phone !== undefined) place.phone = details.phone;
       if (details.website !== undefined) place.website = details.website;
@@ -182,6 +189,23 @@ export class GoogleMapsPlaywrightCrawler {
         }),
       );
     }
+  }
+
+  private isMismatchedPanel(expectedName: string | undefined, panelName: string | undefined): boolean {
+    // A missing panel heading is not a mismatch we can detect — bail out and
+    // let the caller decide about using the data. When the heading exists it
+    // must look like the place we clicked, otherwise the panel is stale.
+    if (!expectedName || !panelName) return false;
+    const toKey = (value: string) =>
+      value
+        .toLocaleLowerCase('vi-VN')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const expectedKey = toKey(expectedName);
+    const panelKey = toKey(panelName);
+    return !expectedKey.includes(panelKey) && !panelKey.includes(expectedKey);
   }
 
   private async extractReviewsFromDetail(page: Page, placeName: string): Promise<ParsedReview[]> {
@@ -270,6 +294,7 @@ export class GoogleMapsPlaywrightCrawler {
   }
 
   private async extractDetailPanelData(page: Page): Promise<{
+    name: string | undefined;
     reviewCount: number | undefined;
     phone: string | undefined;
     website: string | undefined;
@@ -281,6 +306,7 @@ export class GoogleMapsPlaywrightCrawler {
       return await page.evaluate(
         (selectors: Record<string, string>) => {
           const result: {
+            name: string | undefined;
             reviewCount: number | undefined;
             phone: string | undefined;
             website: string | undefined;
@@ -288,6 +314,7 @@ export class GoogleMapsPlaywrightCrawler {
             priceLevel: number | undefined;
             images: Array<{ url: string; altText?: string }>;
           } = {
+            name: undefined,
             reviewCount: undefined,
             phone: undefined,
             website: undefined,
@@ -295,6 +322,15 @@ export class GoogleMapsPlaywrightCrawler {
             priceLevel: undefined,
             images: [],
           };
+
+          // Scope every lookup to the open detail panel. document.querySelector
+          // returns the first match anywhere on the page, which on Google Maps
+          // can be the still-rendered results list — reading that reuses one
+          // list item's review count for many places.
+          const panel = document.querySelector('div[role="main"]') ?? document;
+
+          const heading = panel.querySelector('h1');
+          if (heading) result.name = heading.textContent?.trim() || undefined;
 
           const MAX_REVIEW_COUNT = 1_000_000;
           const parseCount = (raw: string | null | undefined): number | undefined => {
@@ -324,14 +360,16 @@ export class GoogleMapsPlaywrightCrawler {
             return toCount(last);
           };
 
-          const reviewBtn = document.querySelector<HTMLElement>(selectors.detailReviewCount);
+          const reviewBtn =
+            panel.querySelector<HTMLElement>(selectors.detailReviewCount) ??
+            panel.querySelector<HTMLElement>('button[aria-label*="review" i]');
           if (reviewBtn) {
             const text =
               reviewBtn.textContent?.trim() || reviewBtn.getAttribute('aria-label') || '';
             result.reviewCount = parseCount(text);
           }
           if (result.reviewCount === undefined) {
-            const reviewSpan = document.querySelector<HTMLElement>(selectors.detailReviewCountAlt);
+            const reviewSpan = panel.querySelector<HTMLElement>(selectors.detailReviewCountAlt);
             if (reviewSpan) {
               const text =
                 reviewSpan.textContent?.trim() || reviewSpan.getAttribute('aria-label') || '';
@@ -339,7 +377,7 @@ export class GoogleMapsPlaywrightCrawler {
             }
           }
 
-          const phoneBtn = document.querySelector<HTMLElement>(selectors.detailPhone);
+          const phoneBtn = panel.querySelector<HTMLElement>(selectors.detailPhone);
           if (phoneBtn) {
             const telHref =
               phoneBtn.tagName === 'A' ? (phoneBtn as HTMLAnchorElement).href : undefined;
@@ -352,11 +390,11 @@ export class GoogleMapsPlaywrightCrawler {
           }
 
           const websiteLink = Array.from(
-            document.querySelectorAll<HTMLAnchorElement>(selectors.detailWebsite),
+            panel.querySelectorAll<HTMLAnchorElement>(selectors.detailWebsite),
           ).find((link) => /^https?:\/\//i.test(link.href) && !link.href.includes('google.com'));
           if (websiteLink?.href) result.website = websiteLink.href;
 
-          const addressBtn = document.querySelector<HTMLElement>(selectors.detailAddress);
+          const addressBtn = panel.querySelector<HTMLElement>(selectors.detailAddress);
           if (addressBtn) {
             const addrDiv = addressBtn.querySelector('div.fontBodyMedium');
             result.address =
@@ -364,19 +402,16 @@ export class GoogleMapsPlaywrightCrawler {
           }
 
           // Price level: Google renders a '$' run next to the category in the
-          // place-info section. Scope the scan to the section that holds the
-          // phone/address rows so review text or ads cannot pollute it.
-          const infoAnchor = (phoneBtn?.closest('div[role="main"]') ??
-            addressBtn?.closest('div[role="main"]')) as HTMLElement | null;
-          const infoRoot = infoAnchor ?? document.body;
-          const dollarRuns = Array.from(infoRoot.querySelectorAll<HTMLElement>('span'))
+          // place-info section. Scope the scan to the panel only so review
+          // text or ads cannot pollute it.
+          const dollarRuns = Array.from(panel.querySelectorAll<HTMLElement>('span'))
             .map((el) => el.textContent?.replace(/\u00a0/g, ' ').trim() ?? '')
             .filter((text) => /^\${1,4}$/.test(text))
             .map((text) => text.length);
           result.priceLevel = dollarRuns.length ? Math.max(...dollarRuns) : undefined;
 
           result.images = Array.from(
-            document.querySelectorAll<HTMLImageElement>('img[src^="http"]'),
+            panel.querySelectorAll<HTMLImageElement>('img[src^="http"]'),
           )
             .map((image) => ({
               url: image.currentSrc || image.src,
@@ -390,6 +425,7 @@ export class GoogleMapsPlaywrightCrawler {
       );
     } catch {
       return {
+        name: undefined,
         reviewCount: undefined,
         phone: undefined,
         website: undefined,

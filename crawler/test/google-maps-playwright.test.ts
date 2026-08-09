@@ -110,6 +110,31 @@ test('normalizeCategorySlug maps crawler labels to canonical category slugs', ()
   assert.equal(normalizeCategorySlug('Quán chay'), 'vegetarian');
 });
 
+test('normalizeCategorySlug maps Vietnamese drink labels to beverage', () => {
+  assert.equal(normalizeCategorySlug('Sinh tố, nước ép'), 'beverage');
+  assert.equal(normalizeCategorySlug('Trà sữa'), 'beverage');
+});
+
+test('normalizeCategorySlug maps bánh mì to snack, not noodle', () => {
+  assert.equal(normalizeCategorySlug('Bánh mì'), 'snack');
+});
+
+test('normalizeCategorySlug maps phở and bún to noodle/bun', () => {
+  assert.equal(normalizeCategorySlug('Phở 24'), 'noodle');
+  assert.equal(normalizeCategorySlug('Bún bò Huế'), 'bun');
+});
+
+test('normalizeCategorySlug maps unknown labels to undefined', () => {
+  assert.equal(normalizeCategorySlug('Quán Karaoke'), undefined);
+  assert.equal(normalizeCategorySlug(''), undefined);
+  assert.equal(normalizeCategorySlug(undefined), undefined);
+});
+
+test('normalizeCategorySlug maps dessert labels', () => {
+  assert.equal(normalizeCategorySlug('Tráng miệng'), 'dessert');
+  assert.equal(normalizeCategorySlug('Trái cây tô'), 'dessert');
+});
+
 test('extractPlaceIdFromUrl extracts long base64-like id', () => {
   const url =
     'https://www.google.com/maps/place/Qu%C3%A1n+Test/@10.77,106.70,15z/data=!4m8!3m7!1s0x3175292929:0xabc123def456!8m2!3d10.77!4d106.70';

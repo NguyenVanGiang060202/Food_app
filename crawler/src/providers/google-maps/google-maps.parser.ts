@@ -102,6 +102,126 @@ export function parseCoordinatesFromUrl(
   return { latitude, longitude };
 }
 
+// Canonical slugs defined in database/seeds/001_reference_data.sql
+const CANONICAL_CATEGORY_SLUGS = new Set([
+  'vietnamese',
+  'coffee-shop',
+  'vegetarian',
+  'noodle',
+  'dessert',
+  'bun',
+  'rice',
+  'snack',
+  'beverage',
+]);
+
+// Ordered, specific-first label rules: the first pattern that matches the
+// accent-free lowercase label wins, so "Bánh mì" maps to snack (not noodle).
+const CATEGORY_LABEL_RULES: ReadonlyArray<{ slug: string; patterns: RegExp[] }> = [
+  {
+    slug: 'dessert',
+    patterns: [
+      /\bbanh kem\b/,
+      /\bbanh ngot\b/,
+      /\bsua chua\b/,
+      /\bdessert\b/,
+      /\btiramisu\b/,
+      /\bmousse\b/,
+      /\bbakery\b/,
+      /\btrai cay\b/,
+      /\btrang mieng\b/,
+      /\bang ngot\b/,
+    ],
+  },
+  {
+    slug: 'snack',
+    patterns: [
+      /\bbanh mi\b/,
+      /\ban vat\b/,
+      /\bstreet food\b/,
+      /\bfood truck\b/,
+      /\bfast food\b/,
+      /\bbanh xeo\b/,
+      /\bgoi cuon\b/,
+      /\bsnack\b/,
+    ],
+  },
+  {
+    slug: 'bun',
+    patterns: [
+      /\bbun cha\b/,
+      /\bbun bo\b/,
+      /\bbun rieu\b/,
+      /\bbun thit nuong\b/,
+      /\bbun oc\b/,
+      /\bbun ca\b/,
+      /\bbun gan\b/,
+      /\bbun\b/,
+    ],
+  },
+  {
+    slug: 'noodle',
+    patterns: [
+      /\bpho\b/,
+      /\bhu tieu\b/,
+      /\bmi quang\b/,
+      /\bmi xao\b/,
+      /\bmi ga\b/,
+      /\bbanh canh\b/,
+      /\bnoodle\b/,
+      /\bmy\b/,
+      /\bmi\b/,
+    ],
+  },
+  {
+    slug: 'rice',
+    patterns: [
+      /\bcom suon\b/,
+      /\bcom tam\b/,
+      /\bcom ga\b/,
+      /\bcom rang\b/,
+      /\bcom thap cam\b/,
+      /\bcom bo\b/,
+      /\bcom chay\b/,
+      /\brice\b/,
+      /^com\b/,
+    ],
+  },
+  {
+    slug: 'beverage',
+    patterns: [
+      /\btra sua\b/,
+      /\btra chanh\b/,
+      /\bsinh to\b/,
+      /\bnuoc ep\b/,
+      /\bsmoothie\b/,
+      /\bjuice\b/,
+      /\bbubble tea\b/,
+      /\bdo uong\b/,
+      /\bdrink\b/,
+    ],
+  },
+  {
+    slug: 'coffee-shop',
+    patterns: [/\bca phe\b/, /\bcoffee\b/, /\bcafe\b/, /\bcapuchino\b/, /\blatte\b/, /\bespresso\b/],
+  },
+  {
+    slug: 'vegetarian',
+    patterns: [/\bchay\b/, /\bvegan\b/, /\bvegetarian\b/],
+  },
+  {
+    slug: 'vietnamese',
+    patterns: [/\bvietnamese\b/, /\bquan an viet nam\b/, /\bmon viet\b/],
+  },
+];
+
+function classifyCategoryLabel(text: string): string | undefined {
+  for (const rule of CATEGORY_LABEL_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(text))) return rule.slug;
+  }
+  return undefined;
+}
+
 export function normalizeCategorySlug(category: string | undefined | null): string | undefined {
   if (!category?.trim()) return undefined;
   const normalized = category
@@ -109,22 +229,27 @@ export function normalizeCategorySlug(category: string | undefined | null): stri
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const matched = classifyCategoryLabel(normalized);
+  if (matched) return matched;
+
+  const slug = normalized
     .replace(/&/g, 'and')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
+  if (CANONICAL_CATEGORY_SLUGS.has(slug)) return slug;
+
   const aliases: Record<string, string> = {
     coffee: 'coffee-shop',
-    'coffee-shop': 'coffee-shop',
     cafe: 'coffee-shop',
     restaurant: 'restaurant',
     'vietnamese-restaurant': 'vietnamese',
-    'vegetarian-restaurant': 'vegetarian',
-    'quan-chay': 'vegetarian',
-    chay: 'vegetarian',
     'quan-an-viet-nam': 'vietnamese',
     'vietnamese-food': 'vietnamese',
   };
-  return aliases[normalized] ?? normalized;
+  return aliases[slug] ?? undefined;
 }
 
 export function normalizeGoogleImageUrl(url: string | undefined | null): string | undefined {
