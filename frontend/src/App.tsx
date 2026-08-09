@@ -5,16 +5,23 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Clock,
+  Globe,
+  MapPin,
   MessageCircle,
+  Phone,
   Sparkles,
   Star,
+  X,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Header } from './components/site/Header';
 import { Footer } from './components/site/Footer';
 import { RestaurantCard, RestaurantCardSkeleton } from './components/site/cards';
 import { SaveRestaurantButton } from './components/site/SaveRestaurantButton';
 import { SmartImage } from './components/site/SmartImage';
-import { type Restaurant } from './lib/food-data';
+import { type Restaurant, formatVnd } from './lib/food-data';
 import {
   detailToRestaurant,
   getPreferences,
@@ -407,10 +414,14 @@ function RestaurantDetailPage() {
   const id = useLocation().pathname.split('/').filter(Boolean).pop() ?? '';
   const [detail, setDetail] = useState<BackendRestaurantDetail | null>(null);
   const [failed, setFailed] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [showAllReviews, setShowAllReviews] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setDetail(null);
     setFailed(false);
+    setLightboxIndex(null);
+    setShowAllReviews(false);
     void getRestaurant(id)
       .then((value) => {
         if (!cancelled) setDetail(value);
@@ -422,6 +433,14 @@ function RestaurantDetailPage() {
       cancelled = true;
     };
   }, [id]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setLightboxIndex(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
   if (failed)
     return (
       <main className="container-page py-20">
@@ -473,19 +492,106 @@ function RestaurantDetailPage() {
           </div>
         </div>
       </div>
+      {(restaurant.hours || detail.phone || detail.websiteUrl) && (
+        <section className="mt-10 rounded-2xl border border-border bg-card p-5 md:p-6">
+          <h2 className="font-display text-2xl">Thông tin quán</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {restaurant.hours && <InfoItem icon={Clock} label="Giờ mở cửa" value={restaurant.hours} />}
+            {detail.phone && (
+              <InfoItem
+                icon={Phone}
+                label="Điện thoại"
+                value={detail.phone}
+                href={`tel:${detail.phone.replace(/[^+\d]/g, '')}`}
+              />
+            )}
+            {detail.websiteUrl && (
+              <InfoItem
+                icon={Globe}
+                label="Website"
+                value={detail.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                href={detail.websiteUrl}
+              />
+            )}
+          </div>
+        </section>
+      )}
       {detail.images.length > 1 && (
         <section className="mt-10">
-          <h2 className="font-display text-2xl">Thư viện ảnh</h2>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {detail.images.slice(0, 8).map((image) => (
-              <SmartImage
-                key={image.id}
-                src={image.url}
-                alt={image.altText ?? restaurant.name}
-                className="aspect-[4/3] w-full rounded-2xl object-cover transition-transform duration-300 hover:scale-[1.02]"
-              />
-            ))}
+          <div className="flex items-end justify-between gap-3">
+            <h2 className="font-display text-2xl">Thư viện ảnh</h2>
+            {detail.images.length > 4 && (
+              <button
+                type="button"
+                onClick={() => setLightboxIndex(0)}
+                className="text-sm text-primary hover:underline"
+              >
+                Xem cả {detail.images.length} ảnh
+              </button>
+            )}
           </div>
+          <div className="mt-4 grid grid-cols-4 gap-3">
+            {detail.images.slice(0, 3).map((image, index) => (
+              <button
+                key={image.id}
+                type="button"
+                onClick={() => setLightboxIndex(index)}
+                className="group relative block aspect-[4/3] w-full overflow-hidden rounded-2xl"
+              >
+                <SmartImage
+                  src={image.url}
+                  alt={image.altText ?? restaurant.name}
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                />
+              </button>
+            ))}
+            {detail.images.length > 3 && (
+              <button
+                type="button"
+                onClick={() => setLightboxIndex(3)}
+                aria-label={`Xem thêm ${detail.images.length - 3} ảnh`}
+                className="relative block aspect-[4/3] w-full overflow-hidden rounded-2xl border border-border bg-muted"
+              >
+                <SmartImage
+                  src={detail.images[3].url}
+                  alt=""
+                  className="h-full w-full scale-110 object-cover opacity-60 blur-[2px]"
+                />
+                <span className="absolute inset-0 grid place-items-center bg-black/25 text-sm font-semibold text-white">
+                  +{detail.images.length - 3} ảnh
+                </span>
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+      {detail.dishes.length > 0 && (
+        <section className="mt-10">
+          <h2 className="font-display text-2xl">Món nổi bật</h2>
+          <ul className="mt-4 grid gap-x-8 gap-y-3 md:grid-cols-2">
+            {[...detail.dishes]
+              .sort((a, b) => Number(b.isPopular) - Number(a.isPopular))
+              .slice(0, 12)
+              .map((dish) => (
+                <li
+                  key={dish.id}
+                  className="flex items-baseline justify-between gap-4 border-b border-border/60 pb-3"
+                >
+                  <span className="text-sm font-medium">
+                    {dish.isPopular && (
+                      <span
+                        aria-hidden="true"
+                        className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-primary align-middle"
+                      />
+                    )}
+                    {dish.name}
+                  </span>
+                  <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+                    {dish.priceAmount != null ? formatVnd(dish.priceAmount) : '—'}
+                  </span>
+                </li>
+              ))}
+          </ul>
         </section>
       )}
       {detail.reviews.length > 0 && (
@@ -501,7 +607,7 @@ function RestaurantDetailPage() {
             </span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {detail.reviews.map((review) => (
+            {(showAllReviews ? detail.reviews : detail.reviews.slice(0, 6)).map((review) => (
               <div
                 key={review.id}
                 className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/30"
@@ -525,9 +631,122 @@ function RestaurantDetailPage() {
               </div>
             ))}
           </div>
+          {detail.reviews.length > 6 && (
+            <button
+              type="button"
+              onClick={() => setShowAllReviews((value) => !value)}
+              className="mt-4 inline-flex items-center gap-1 rounded-full border border-border px-4 py-2 text-sm hover:border-primary hover:text-primary"
+            >
+              {showAllReviews
+                ? 'Thu gọn đánh giá'
+                : `Xem thêm ${detail.reviews.length - 6} đánh giá`}
+            </button>
+          )}
         </section>
       )}
+      <AnimatePresence>
+        {lightboxIndex != null && detail.images[lightboxIndex] && (
+          <motion.div
+            className="fixed inset-0 z-[1200] flex flex-col bg-black/95 pb-[env(safe-area-inset-bottom)]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            <div className="flex shrink-0 items-center justify-between px-4 py-3">
+              <span className="text-sm tabular-nums text-white/80">
+                {lightboxIndex + 1} / {detail.images.length}
+              </span>
+              <button
+                type="button"
+                aria-label="Đóng ảnh"
+                onClick={() => setLightboxIndex(null)}
+                className="grid h-10 w-10 place-items-center rounded-full text-white transition-colors hover:bg-white/10"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="relative min-h-0 flex-1">
+              <AnimatePresence mode="wait">
+                <motion.img
+                  key={detail.images[lightboxIndex].id}
+                  src={detail.images[lightboxIndex].url}
+                  alt={detail.images[lightboxIndex].altText ?? restaurant.name}
+                  className="absolute inset-0 h-full w-full object-contain p-4"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                />
+              </AnimatePresence>
+              {lightboxIndex > 0 && (
+                <button
+                  type="button"
+                  aria-label="Ảnh trước"
+                  onClick={() => setLightboxIndex((index) => (index ?? 0) - 1)}
+                  className="absolute left-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              )}
+              {lightboxIndex < detail.images.length - 1 && (
+                <button
+                  type="button"
+                  aria-label="Ảnh tiếp theo"
+                  onClick={() => setLightboxIndex((index) => (index ?? 0) + 1)}
+                  className="absolute right-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center justify-center gap-2 py-4">
+              {detail.images.map((image, index) => (
+                <button
+                  key={image.id}
+                  type="button"
+                  aria-label={`Xem ảnh ${index + 1}`}
+                  onClick={() => setLightboxIndex(index)}
+                  className={`h-1.5 rounded-full transition-all ${
+                    index === lightboxIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/30'
+                  }`}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
+  );
+}
+
+function InfoItem({
+  icon: Icon,
+  label,
+  value,
+  href,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  href?: string;
+}) {
+  const body = (
+    <>
+      <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <div className="min-w-0">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+        <div className="mt-0.5 break-words text-sm font-medium">{value}</div>
+      </div>
+    </>
+  );
+  const layout = 'flex items-start gap-3';
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer" className={`${layout} hover:text-primary`}>
+      {body}
+    </a>
+  ) : (
+    <div className={layout}>{body}</div>
   );
 }
 

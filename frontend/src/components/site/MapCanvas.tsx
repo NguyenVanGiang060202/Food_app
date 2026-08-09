@@ -30,6 +30,7 @@ export function MapCanvas({
   const mapInstance = useRef<L.Map | null>(null);
   const markers = useRef<L.Marker[]>([]);
   const userMarker = useRef<L.CircleMarker | null>(null);
+const lastUserKeyRef = useRef<string | null>(null);
   const onHoverRef = useRef(onHover);
   const reduced = useReducedMotion();
   const [collapsed, setCollapsed] = useState(false);
@@ -146,14 +147,35 @@ export function MapCanvas({
           .addTo(map)
           .bindTooltip('Vị trí của bạn', { direction: 'top' })
       : null;
-    if (locatedItems.length === 1)
+    if (userLocation) {
+      const userKey = `${userLocation[0].toFixed(5)},${userLocation[1].toFixed(5)}`;
+      if (userKey !== lastUserKeyRef.current) {
+        lastUserKeyRef.current = userKey;
+        if (locatedItems.length > 0) {
+          const points: L.LatLngExpression[] = [userLocation];
+          locatedItems.forEach((item) =>
+            points.push([item.latitude!, item.longitude!] as L.LatLngTuple),
+          );
+          const bounds = L.latLngBounds(points);
+          const tooWide =
+            bounds.getSouthWest().distanceTo(bounds.getNorthEast()) > 8000;
+          if (tooWide) map.flyTo(userLocation, 14, { duration: 0.6 });
+          else map.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
+        } else {
+          map.flyTo(userLocation, 14, { duration: 0.6 });
+        }
+      }
+    } else if (locatedItems.length === 1) {
+      lastUserKeyRef.current = null;
       map.setView([locatedItems[0].latitude!, locatedItems[0].longitude!], 16);
-    else if (locatedItems.length > 1) {
+    } else if (locatedItems.length > 1) {
+      lastUserKeyRef.current = null;
       const bounds = L.latLngBounds(
         locatedItems.map((item) => [item.latitude!, item.longitude!] as L.LatLngTuple),
       );
       map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
     } else {
+      lastUserKeyRef.current = null;
       map.setView(HO_CHI_MINH_CENTER, 12);
     }
   }, [locatedItems, userLocation, sized]);

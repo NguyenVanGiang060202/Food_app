@@ -6,9 +6,9 @@ import { motion } from 'motion/react';
 
 const nav = [
   { to: '/', label: 'Hỏi Bếp', icon: MessageCircle },
-  { to: '/discover', label: 'Dạo món', icon: Compass },
-  { to: '/map', label: 'Quanh tôi', icon: Map },
-  { to: '/saved', label: 'Cất quán', icon: Bookmark },
+  { to: '/discover', label: 'Khám phá', icon: Compass },
+  { to: '/map', label: 'Bản đồ', icon: Map },
+  { to: '/saved', label: 'Đã lưu', icon: Bookmark },
 ] as const;
 
 export function Header() {
@@ -19,12 +19,12 @@ export function Header() {
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
-        className="md:sticky md:top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur-md"
+        className="hidden border-b border-border/60 bg-background/85 backdrop-blur-md md:sticky md:top-0 md:block md:z-40"
       >
-        <div className="container-page flex h-16 items-center gap-6">
+        <div className="container-page flex h-14 items-center gap-4 md:h-16 md:gap-6">
           <Link to="/" className="flex shrink-0 items-center gap-2">
-            <img src={mark} alt="" width={512} height={512} className="h-8 w-8 object-contain" />
-            <span className="font-display text-xl font-semibold tracking-tight">
+            <img src={mark} alt="" width={512} height={512} className="h-7 w-7 object-contain md:h-8 md:w-8" />
+            <span className="font-display text-lg font-semibold tracking-tight md:text-xl">
               Bếp<span className="text-primary">.</span>
             </span>
           </Link>
@@ -47,12 +47,12 @@ export function Header() {
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto hidden items-center gap-2 md:flex">
             {user ? (
               <Link
                 to="/profile"
                 className="grid h-9 w-9 place-items-center rounded-full border border-border bg-card text-sm font-medium uppercase"
-                aria-label="Gu ruột của tôi"
+                aria-label="Hồ sơ cá nhân"
               >
                 {(user.email ?? '?').charAt(0)}
               </Link>
@@ -74,7 +74,7 @@ export function Header() {
 }
 
 function BottomNav() {
-  const items = [...nav, { to: '/profile', label: 'Gu tôi', icon: User }] as const;
+  const items = [...nav, { to: '/profile', label: 'Tài khoản', icon: User }] as const;
   return (
     <nav
       aria-label="Điều hướng trên thiết bị di động"

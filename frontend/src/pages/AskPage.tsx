@@ -12,9 +12,10 @@ import {
   X,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { Link, useLocation } from 'react-router-dom';
 import { Header } from '@/components/site/Header';
 import { DishResult, RestaurantResult } from '@/components/site/ResultCards';
-import { useLocation } from 'react-router-dom';
+import mark from '@/assets/bep-mark.png';
 import type { Dish } from '@/lib/food-data';
 import { attrLabel, filterGroups, priceLevelOptions, ratingOptions } from '@/lib/taste-filters';
 import { MapCanvas } from '@/components/site/MapCanvas';
@@ -289,7 +290,13 @@ export function AskPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       {!submitted ? (
         <div className="flex flex-1 flex-col justify-center py-10">
-          <h1 className="mt-5 max-w-lg text-balance font-display text-4xl leading-[1.05] md:text-6xl">
+          <Link to="/" className="mb-6 inline-flex items-center gap-2 self-start md:self-center">
+            <img src={mark} alt="" width={512} height={512} className="h-6 w-6 object-contain md:h-8 md:w-8" />
+            <span className="font-display text-base font-semibold tracking-tight md:text-xl">
+              Bếp<span className="text-primary">.</span>
+            </span>
+          </Link>
+          <h1 className="max-w-lg text-balance font-display text-4xl leading-[1.05] md:text-6xl">
             Bụng đang <em className="italic text-primary">réo</em> món gì?
           </h1>
           <p className="mt-4 max-w-md text-muted-foreground">
@@ -377,7 +384,7 @@ export function AskPage() {
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${location ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card'}`}
           >
             <LocateFixed className="h-3.5 w-3.5" />
-            {locationBusy ? 'Đang định vị...' : location ? 'Đã lấy vị trí' : 'Vị trí'}
+            {locationBusy ? 'Đang định vị...' : location ? 'Đã bật vị trí' : 'Bật vị trí'}
           </button>
           {filters.attrs.map((attr) => (
             <FilterChip key={attr} label={attrLabel(attr)} onRemove={() => toggleAttr(attr)} />
@@ -537,39 +544,55 @@ export function AskPage() {
           {mapCanvas}
         </div>
         {!mobileChatOpen && !mobileListOpen && (
-          <div className="fixed inset-x-3 bottom-24 z-[1200] flex items-center gap-2 lg:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileListOpen(true)}
-              className="relative inline-flex shrink-0 items-center gap-2 rounded-full bg-primary px-4 py-[13px] text-sm font-medium text-white shadow-lift active:scale-[0.97]"
-            >
-              <ListFilter className="h-4 w-4" />
-              Danh sách
-              {resultRestaurants.length > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 grid min-w-4 place-items-center rounded-full bg-foreground px-1 py-px text-[10px] font-bold leading-4 text-background ring-2 ring-background">
-                  {resultRestaurants.length}
+          <>
+            <div className="fixed inset-x-3 bottom-24 z-[1200] flex items-center gap-2 lg:hidden">
+              <button
+                type="button"
+                onClick={() => void locate()}
+                disabled={locationBusy}
+                aria-label={location ? 'Vị trí đã bật' : 'Bật vị trí'}
+                title={location ? 'Đã bật vị trí' : 'Bật vị trí'}
+                className={`grid h-12 w-12 shrink-0 place-items-center rounded-full shadow-lift transition-transform active:scale-95 ${location ? 'bg-primary text-white ring-2 ring-primary/20' : 'border border-border bg-card text-foreground'}`}
+              >
+                {locationBusy ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/40 border-t-current" />
+                ) : (
+                  <LocateFixed className="h-5 w-5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileListOpen(true)}
+                className="relative inline-flex shrink-0 items-center gap-2 rounded-full bg-primary px-4 py-[13px] text-sm font-medium text-white shadow-lift active:scale-[0.97]"
+              >
+                <ListFilter className="h-4 w-4" />
+                Danh sách
+                {resultRestaurants.length > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 grid min-w-4 place-items-center rounded-full bg-foreground px-1 py-px text-[10px] font-bold leading-4 text-background ring-2 ring-background">
+                    {resultRestaurants.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileChatOpen(true)}
+                className="flex min-w-0 flex-1 items-center gap-2.5 rounded-2xl border border-border bg-card/95 p-2.5 pr-3 text-left shadow-lift backdrop-blur active:scale-[0.99]"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                  <MessageCircle className="h-4 w-4" />
                 </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileChatOpen(true)}
-              className="flex min-w-0 flex-1 items-center gap-2.5 rounded-2xl border border-border bg-card/95 p-2.5 pr-3 text-left shadow-lift backdrop-blur active:scale-[0.99]"
-            >
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                <MessageCircle className="h-4 w-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {busy ? 'Bếp đang nấu...' : 'Bếp vừa trả lời'}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {busy ? 'Bếp đang nấu...' : 'Bếp vừa trả lời'}
+                  </span>
+                  <span className="block truncate text-sm font-medium text-foreground">
+                    {latestAnswer}
+                  </span>
                 </span>
-                <span className="block truncate text-sm font-medium text-foreground">
-                  {latestAnswer}
-                </span>
-              </span>
-              <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </button>
-          </div>
+                <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            </div>
+          </>
         )}
       </main>
       <AnimatePresence>
@@ -744,20 +767,35 @@ export function AskPage() {
                     </motion.button>
                   </div>
                 </div>
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowFilters((value) => !value)}
-                    className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground/80"
-                  >
-                    <SlidersHorizontal className="h-4 w-4" />
-                    Khẩu vị
-                    {activeCount > 0 && (
-                      <span className="rounded-full bg-primary px-1.5 text-[10px] text-white">
-                        {activeCount}
-                      </span>
-                    )}
-                  </button>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowFilters((value) => !value)}
+                      className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground/80"
+                    >
+                      <SlidersHorizontal className="h-4 w-4" />
+                      Khẩu vị
+                      {activeCount > 0 && (
+                        <span className="rounded-full bg-primary px-1.5 text-[10px] text-white">
+                          {activeCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void locate()}
+                      disabled={locationBusy}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm ${location ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground/80'}`}
+                    >
+                      <LocateFixed className="h-4 w-4" />
+                      {locationBusy
+                        ? 'Đang định vị...'
+                        : location
+                          ? 'Đã bật vị trí'
+                          : 'Bật vị trí'}
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={reset}
