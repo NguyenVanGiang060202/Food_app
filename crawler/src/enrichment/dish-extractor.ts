@@ -161,4 +161,3 @@ export function extractDishesFromText(
   }
   return suggestions;
 }
-

@@ -23,7 +23,13 @@ export function Header() {
       >
         <div className="container-page flex h-14 items-center gap-4 md:h-16 md:gap-6">
           <Link to="/" className="flex shrink-0 items-center gap-2">
-            <img src={mark} alt="" width={512} height={512} className="h-7 w-7 object-contain md:h-8 md:w-8" />
+            <img
+              src={mark}
+              alt=""
+              width={512}
+              height={512}
+              className="h-7 w-7 object-contain md:h-8 md:w-8"
+            />
             <span className="font-display text-lg font-semibold tracking-tight md:text-xl">
               Bếp<span className="text-primary">.</span>
             </span>

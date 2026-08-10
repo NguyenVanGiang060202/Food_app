@@ -286,9 +286,7 @@ test('authenticated visitor can save a restaurant without leaving the detail pag
   await expect(page).toHaveURL(/\/restaurants\/restaurant-1$/);
 });
 
-test('restaurant detail renders a single loaded restaurant', async ({
-  page,
-}) => {
+test('restaurant detail renders a single loaded restaurant', async ({ page }) => {
   await page.route('**/api/v1/auth/me', async (route) =>
     route.fulfill({ status: 401, json: { error: { message: 'Unauthenticated' } } }),
   );

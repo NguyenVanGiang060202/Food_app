@@ -22,17 +22,18 @@ function withEnv(values: Record<string, string | undefined>, run: () => void) {
 }
 
 test('EmailService is disabled until a sender and SMTP target are configured', () => {
-  withEnv(
-    { SMTP_FROM: undefined, SMTP_URL: undefined, SMTP_HOST: undefined },
-    () => {
-      assert.equal(new EmailService().isConfigured(), false);
-    },
-  );
+  withEnv({ SMTP_FROM: undefined, SMTP_URL: undefined, SMTP_HOST: undefined }, () => {
+    assert.equal(new EmailService().isConfigured(), false);
+  });
 });
 
 test('EmailService supports SMTP_URL configuration', () => {
   withEnv(
-    { SMTP_FROM: 'Food Discovery <mailer@example.com>', SMTP_URL: 'smtp://localhost:1025', SMTP_HOST: undefined },
+    {
+      SMTP_FROM: 'Food Discovery <mailer@example.com>',
+      SMTP_URL: 'smtp://localhost:1025',
+      SMTP_HOST: undefined,
+    },
     () => {
       assert.equal(new EmailService().isConfigured(), true);
     },

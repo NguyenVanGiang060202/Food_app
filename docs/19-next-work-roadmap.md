@@ -73,7 +73,7 @@ Không cam kết tải cao, zero-downtime hoặc dữ liệu real-time.
     `name_similarity` (×30).
   - Rà lại toàn bộ 3 anchor quán hiện có để đối chiếu kết quả.
 - **Đã làm:** bước sinh `restaurant_embedding` (`npm run embed:once --workspace
-  crawler`, docs/05 Stage 7) từ search-document deterministic (tên/category/dish/
+crawler`, docs/05 Stage 7) từ search-document deterministic (tên/category/dish/
   khu vực/phân khúc giá), provider OpenAI-compatible (env
   `EMBEDDING_BASE_URL/API_KEY/MODEL`), idempotent + `--refresh`, có
   `enrichment_log`. **Cần hoàn thiện:** chọn model/dimension thật (docs dự kiến

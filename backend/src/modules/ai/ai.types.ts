@@ -33,10 +33,7 @@ export interface RawAiIntent {
 const firstStringOrNull = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() ? value.trim() : null;
 
-const uniqueStrings = (
-  value: unknown,
-  options: { max: number; maxLength?: number },
-): string[] => {
+const uniqueStrings = (value: unknown, options: { max: number; maxLength?: number }): string[] => {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const result: string[] = [];
@@ -77,8 +74,8 @@ export function normalizeAiIntent(
     [...allowedCategories].map((slug) => slug.toLocaleLowerCase('vi-VN')),
   );
   return {
-    categories: uniqueStrings(input.categories, { max: 4, maxLength: 40 }).filter(
-      (slug) => lowerAllowed.has(slug.toLocaleLowerCase('vi-VN')),
+    categories: uniqueStrings(input.categories, { max: 4, maxLength: 40 }).filter((slug) =>
+      lowerAllowed.has(slug.toLocaleLowerCase('vi-VN')),
     ),
     dishes: uniqueStrings(input.dishes, { max: 8, maxLength: 60 }),
     tastes: uniqueStrings(input.tastes, { max: 8, maxLength: 40 }),

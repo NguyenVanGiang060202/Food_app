@@ -49,8 +49,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(
-    JSON.stringify({ event: 'embedding_failed', message: String(error) }),
-  );
+  console.error(JSON.stringify({ event: 'embedding_failed', message: String(error) }));
   process.exitCode = 1;
 });

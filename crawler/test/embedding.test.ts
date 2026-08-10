@@ -8,13 +8,8 @@ import {
   EMBEDDING_TEMPLATE_VERSION,
   embeddingModelId,
 } from '../src/embedding/search-document';
-import {
-  OpenAICompatibleEmbeddingProvider,
-} from '../src/embedding/embedding-provider';
-import {
-  selectEmbeddingTargets,
-  EmbeddingCandidateRow,
-} from '../src/embedding/embedding-loader';
+import { OpenAICompatibleEmbeddingProvider } from '../src/embedding/embedding-provider';
+import { selectEmbeddingTargets, EmbeddingCandidateRow } from '../src/embedding/embedding-loader';
 
 const baseSource = {
   name: 'Bún Bò Huế Cô Hường',
@@ -47,19 +42,14 @@ test('buildSearchDocument omits empty optional fields', () => {
     district: null,
     city: null,
   });
-  assert.equal(
-    doc,
-    'Quán A | normalized name: quan a',
-  );
+  assert.equal(doc, 'Quán A | normalized name: quan a');
 });
 
 test('contentHash is stable and changes when the document changes', () => {
   const hashA = contentHash(buildSearchDocument(baseSource));
   const hashB = contentHash(buildSearchDocument(baseSource));
   assert.equal(hashA, hashB);
-  const changed = contentHash(
-    buildSearchDocument({ ...baseSource, dishes: ['Bún bò Huế'] }),
-  );
+  const changed = contentHash(buildSearchDocument({ ...baseSource, dishes: ['Bún bò Huế'] }));
   assert.notEqual(changed, hashA);
   assert.match(hashA, /^[0-9a-f]{64}$/);
 });
@@ -134,10 +124,7 @@ test('provider throws on a non-2xx response', async () => {
       apiKey: 'secret-key',
       model: 'test-model',
     });
-    await assert.rejects(
-      provider.generateEmbedding('phở bò'),
-      /embedding provider 429/,
-    );
+    await assert.rejects(provider.generateEmbedding('phở bò'), /embedding provider 429/);
   } finally {
     server.close();
   }
@@ -172,10 +159,7 @@ function startEmbeddingServer(options: {
     });
     request.on('end', () => {
       const payload = JSON.parse(body);
-      const vector = Array.from(
-        { length: options.dimensions },
-        (_, index) => (index + 1) / 10,
-      );
+      const vector = Array.from({ length: options.dimensions }, (_, index) => (index + 1) / 10);
       response.writeHead(options.status ?? 200, {
         'Content-Type': 'application/json',
       });

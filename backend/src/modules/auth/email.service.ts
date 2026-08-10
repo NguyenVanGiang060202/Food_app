@@ -22,7 +22,7 @@ export class EmailService {
   isConfigured() {
     return Boolean(
       (process.env.BREVO_API_KEY && this.brevoSender()) ||
-        (process.env.SMTP_FROM && (process.env.SMTP_URL || process.env.SMTP_HOST)),
+      (process.env.SMTP_FROM && (process.env.SMTP_URL || process.env.SMTP_HOST)),
     );
   }
 
@@ -62,7 +62,12 @@ export class EmailService {
     }
   }
 
-  private async sendWithBrevo(message: { to: string; subject: string; text: string; html: string }) {
+  private async sendWithBrevo(message: {
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+  }) {
     const sender = this.brevoSender();
     if (!sender) throw new Error('Brevo sender is not configured.');
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {

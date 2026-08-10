@@ -21,12 +21,26 @@ interface Rule {
 const RULES: Rule[] = [
   {
     slug: 'coffee-shop',
-    patterns: [/\bca phe\b/, /\bcoffee\b/, /\bcafe\b/, /\bcapuchino\b/, /\blatte\b/, /\bespresso\b/],
+    patterns: [
+      /\bca phe\b/,
+      /\bcoffee\b/,
+      /\bcafe\b/,
+      /\bcapuchino\b/,
+      /\blatte\b/,
+      /\bespresso\b/,
+    ],
     confidence: 0.95,
   },
   {
     slug: 'beverage',
-    patterns: [/\btra sua\b/, /\btra chanh\b/, /\bsinh to\b/, /\bnuoc ep\b/, /\bsmoothie\b/, /\bjuice\b/],
+    patterns: [
+      /\btra sua\b/,
+      /\btra chanh\b/,
+      /\bsinh to\b/,
+      /\bnuoc ep\b/,
+      /\bsmoothie\b/,
+      /\bjuice\b/,
+    ],
     confidence: 0.9,
   },
   {

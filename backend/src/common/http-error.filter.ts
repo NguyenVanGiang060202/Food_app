@@ -36,36 +36,32 @@ export class HttpErrorFilter implements ExceptionFilter {
       const messages = Array.isArray(body.message)
         ? body.message
         : [body.message ?? 'Request failed.'];
-      response
-        .status(status)
-        .json({
-          error: {
-            code:
-              status === HttpStatus.BAD_REQUEST
-                ? 'VALIDATION_ERROR'
-                : status === HttpStatus.UNAUTHORIZED
-                  ? 'UNAUTHENTICATED'
-                  : status === HttpStatus.FORBIDDEN
-                    ? 'FORBIDDEN'
-                    : status === HttpStatus.NOT_FOUND
-                      ? 'NOT_FOUND'
-                      : status === HttpStatus.CONFLICT
-                        ? 'CONFLICT'
-                        : status === HttpStatus.TOO_MANY_REQUESTS
-                          ? 'RATE_LIMITED'
-                          : status === HttpStatus.SERVICE_UNAVAILABLE
-                            ? 'SERVICE_UNAVAILABLE'
-                            : 'INTERNAL_ERROR',
-            message: messages.join('; '),
-            requestId,
-          },
-        });
+      response.status(status).json({
+        error: {
+          code:
+            status === HttpStatus.BAD_REQUEST
+              ? 'VALIDATION_ERROR'
+              : status === HttpStatus.UNAUTHORIZED
+                ? 'UNAUTHENTICATED'
+                : status === HttpStatus.FORBIDDEN
+                  ? 'FORBIDDEN'
+                  : status === HttpStatus.NOT_FOUND
+                    ? 'NOT_FOUND'
+                    : status === HttpStatus.CONFLICT
+                      ? 'CONFLICT'
+                      : status === HttpStatus.TOO_MANY_REQUESTS
+                        ? 'RATE_LIMITED'
+                        : status === HttpStatus.SERVICE_UNAVAILABLE
+                          ? 'SERVICE_UNAVAILABLE'
+                          : 'INTERNAL_ERROR',
+          message: messages.join('; '),
+          requestId,
+        },
+      });
       return;
     }
-    response
-      .status(HttpStatus.INTERNAL_SERVER_ERROR)
-      .json({
-        error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.', requestId },
-      });
+    response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+      error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.', requestId },
+    });
   }
 }

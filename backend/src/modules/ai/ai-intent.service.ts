@@ -10,11 +10,7 @@
 
 import { Injectable, Optional } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import {
-  AiIntent,
-  normalizeAiIntent,
-  RawAiIntent,
-} from './ai.types';
+import { AiIntent, normalizeAiIntent, RawAiIntent } from './ai.types';
 import { OpenAICompatibleAiClient } from './openai-compatible-ai.client';
 
 const CATEGORY_CACHE_TTL_MS = 60_000;
@@ -34,8 +30,7 @@ export class AiIntentService {
       (apiKey
         ? new OpenAICompatibleAiClient({
             baseUrl:
-              process.env.AI_BASE_URL ??
-              'https://generativelanguage.googleapis.com/v1beta/openai',
+              process.env.AI_BASE_URL ?? 'https://generativelanguage.googleapis.com/v1beta/openai',
             apiKey,
             model: process.env.AI_MODEL ?? 'gemini-3.5-flash',
             timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 15_000),
@@ -52,10 +47,7 @@ export class AiIntentService {
     try {
       const allowedSlugs = await this.validCategorySlugs();
       const system = buildIntentSystemPrompt(allowedSlugs);
-      const raw = (await this.client.chatJson(
-        system,
-        `Câu hỏi: ${query.trim()}`,
-      )) as RawAiIntent;
+      const raw = (await this.client.chatJson(system, `Câu hỏi: ${query.trim()}`)) as RawAiIntent;
       return normalizeAiIntent(raw, allowedSlugs);
     } catch {
       return null;

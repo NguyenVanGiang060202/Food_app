@@ -54,9 +54,7 @@ export class OpenAICompatibleEmbeddingProvider implements EmbeddingProvider {
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(
-          `embedding provider ${response.status}: ${body.slice(0, 500)}`,
-        );
+        throw new Error(`embedding provider ${response.status}: ${body.slice(0, 500)}`);
       }
 
       const payload = (await response.json()) as {

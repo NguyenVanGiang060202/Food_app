@@ -21,10 +21,7 @@ import {
   embeddingModelId,
   RestaurantEmbeddingSource,
 } from './search-document';
-import {
-  EmbeddingProvider,
-  OpenAICompatibleEmbeddingProvider,
-} from './embedding-provider';
+import { EmbeddingProvider, OpenAICompatibleEmbeddingProvider } from './embedding-provider';
 
 export interface EmbeddingSummary {
   scanned: number;
@@ -105,7 +102,11 @@ export class EmbeddingLoader {
     await this.pool.end();
   }
 
-  async embed({ limit = 0, dryRun = false, refresh = false }: EmbedOptions = {}): Promise<EmbeddingSummary> {
+  async embed({
+    limit = 0,
+    dryRun = false,
+    refresh = false,
+  }: EmbedOptions = {}): Promise<EmbeddingSummary> {
     const providerModel = process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small';
     const model = embeddingModelId(providerModel);
 
@@ -198,19 +199,13 @@ export class EmbeddingLoader {
       }));
 
       const targets = selectEmbeddingTargets(candidates, { refresh });
-      const bounded =
-        limit > 0 && targets.length > limit ? targets.slice(0, limit) : targets;
+      const bounded = limit > 0 && targets.length > limit ? targets.slice(0, limit) : targets;
 
       if (!dryRun && provider !== null) {
         await Promise.all(
           bounded.map(async (target) => {
             const vector = await provider.generateEmbedding(target.document);
-            await this.upsertEmbedding(
-              target.restaurantId,
-              model,
-              target.documentHash,
-              vector,
-            );
+            await this.upsertEmbedding(target.restaurantId, model, target.documentHash, vector);
             if (target.hasExisting) {
               summary.refreshed += 1;
             } else {
