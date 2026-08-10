@@ -3,6 +3,7 @@ import { PlaywrightBrowser } from '../../browser/playwright-browser';
 import { SELECTORS } from './selectors';
 import {
   isLikelyRestaurantName,
+  rejectsNonFoodPlace,
   normalizeImages,
   parseRating,
   parseReviewCount,
@@ -95,7 +96,11 @@ export class GoogleMapsPlaywrightCrawler {
         for (const item of rawItems) {
           if (results.length >= this.maxResults) break;
           const place = this.toParsedPlace(item);
-          if (place && isLikelyRestaurantName(place.name)) {
+          if (
+            place &&
+            isLikelyRestaurantName(place.name) &&
+            !rejectsNonFoodPlace(place.name, place.category)
+          ) {
             if (this.extractDetails) {
               await this.enrichWithDetails(page, place, item.url);
             }
@@ -191,7 +196,10 @@ export class GoogleMapsPlaywrightCrawler {
     }
   }
 
-  private isMismatchedPanel(expectedName: string | undefined, panelName: string | undefined): boolean {
+  private isMismatchedPanel(
+    expectedName: string | undefined,
+    panelName: string | undefined,
+  ): boolean {
     // A missing panel heading is not a mismatch we can detect — bail out and
     // let the caller decide about using the data. When the heading exists it
     // must look like the place we clicked, otherwise the panel is stale.
@@ -410,9 +418,7 @@ export class GoogleMapsPlaywrightCrawler {
             .map((text) => text.length);
           result.priceLevel = dollarRuns.length ? Math.max(...dollarRuns) : undefined;
 
-          result.images = Array.from(
-            panel.querySelectorAll<HTMLImageElement>('img[src^="http"]'),
-          )
+          result.images = Array.from(panel.querySelectorAll<HTMLImageElement>('img[src^="http"]'))
             .map((image) => ({
               url: image.currentSrc || image.src,
               altText: image.alt || undefined,
@@ -579,6 +585,7 @@ export class GoogleMapsPlaywrightCrawler {
       for (const item of rawData) {
         if (item.name === 'Google' || !item.url) continue;
         if (!isLikelyRestaurantName(item.name)) continue;
+        if (rejectsNonFoodPlace(item.name, item.category)) continue;
         if (seenUrls.has(item.url)) continue;
         seenUrls.add(item.url);
         newItems.push(item);

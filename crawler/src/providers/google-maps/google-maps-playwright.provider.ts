@@ -9,6 +9,7 @@ import {
   parseReviewCount,
   normalizeCategorySlug,
   extractPlaceIdFromUrl,
+  rejectsNonFoodPlace,
 } from './google-maps.parser';
 import { createHash } from 'node:crypto';
 
@@ -61,6 +62,7 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
 
     for (const place of places) {
       if (!place.name) continue;
+      if (rejectsNonFoodPlace(place.name, place.category)) continue;
 
       const externalId = place.url
         ? (extractPlaceIdFromUrl(place.url) ?? place.url)

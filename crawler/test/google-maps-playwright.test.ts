@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isLikelyRestaurantName,
+  rejectsNonFoodPlace,
   normalizeImages,
   parseRating,
   parseReviewCount,
@@ -80,6 +81,51 @@ test('place name filter excludes city and district cards', () => {
   assert.equal(isLikelyRestaurantName('Thành phố Hồ Chí Minh'), false);
   assert.equal(isLikelyRestaurantName('Quận 1'), false);
   assert.equal(isLikelyRestaurantName('Bún Bò Huế 31'), true);
+});
+
+test('rejectsNonFoodPlace rejects medical/karaoke/market/farm names', () => {
+  assert.equal(rejectsNonFoodPlace('Bệnh viện Đa khoa Nhà Bè', 'Bệnh viện'), true);
+  assert.equal(rejectsNonFoodPlace('Nha Khoa Thẩm Mỹ Cẩm Tú (Q8)', undefined), true);
+  assert.equal(rejectsNonFoodPlace('Trung tâm Y tế khu vực Phú Lâm', undefined), true);
+  assert.equal(rejectsNonFoodPlace('Karaoke Dragon Palace KTV', 'Karaoke'), true);
+  assert.equal(rejectsNonFoodPlace('Chợ Hải Sản 79', undefined), true);
+  assert.equal(rejectsNonFoodPlace('5ku Farm', undefined), true);
+  assert.equal(rejectsNonFoodPlace('Trung tâm hội nghị - tiệc cưới Areca Garden', undefined), true);
+});
+
+test('rejectsNonFoodPlace rejects spa/massage only via the category label', () => {
+  assert.equal(rejectsNonFoodPlace('Massage An Viên', 'Massage'), true);
+  assert.equal(rejectsNonFoodPlace('Spa & Beauty', 'Spa'), true);
+});
+
+test('rejectsNonFoodPlace keeps coffee shops that mention spa in the name', () => {
+  assert.equal(
+    rejectsNonFoodPlace(
+      'CÀ PHÊ ĐẸP Coffee shop & Spa ( Massage & Hair wash ) - マッサージ - 마사지 - 按摩',
+      'Coffee shop',
+    ),
+    false,
+  );
+  assert.equal(rejectsNonFoodPlace('Le Blanc. Coffee & Spaces', 'Cà phê'), false);
+  assert.equal(rejectsNonFoodPlace('The 10th Space', undefined), false);
+});
+
+test('rejectsNonFoodPlace keeps food names even when they mention non-food words', () => {
+  assert.equal(rejectsNonFoodPlace('PHỞ BÒ NGA - GẦN BỆNH VIỆN TÂN PHÚ', 'Nhà hàng'), false);
+  assert.equal(rejectsNonFoodPlace('Bún Bò Huế Cô Xuân chợ Đông Ba', 'Nhà hàng'), false);
+  assert.equal(rejectsNonFoodPlace('Cà phê Farmhouse', 'Cà phê'), false);
+});
+
+test('rejectsNonFoodPlace rejects junk, mall, an address-only and district names', () => {
+  assert.equal(rejectsNonFoodPlace('đã đóng cửa', undefined), true);
+  assert.equal(rejectsNonFoodPlace('Không tên', undefined), true);
+  assert.equal(rejectsNonFoodPlace('HỦ TIẾU MÌ KHÔNG TÊN', undefined), true);
+  assert.equal(
+    rejectsNonFoodPlace('889 Phạm Thế Hiển, Phường 4, Quận 8, Thành phố Hồ Chí Minh', undefined),
+    true,
+  );
+  assert.equal(rejectsNonFoodPlace('Go! Dĩ An', undefined), true);
+  assert.equal(rejectsNonFoodPlace('Nhà Bè', undefined), true);
 });
 
 test('parseCoordinatesFromUrl extracts map coordinates', () => {

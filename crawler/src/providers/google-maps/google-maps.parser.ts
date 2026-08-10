@@ -80,6 +80,150 @@ export function isLikelyRestaurantName(name: string | undefined | null): boolean
   );
 }
 
+function normalizeMatchKey(value: string | undefined | null): string | undefined {
+  if (!value?.trim()) return undefined;
+  return value
+    .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Google's category label is a generic business type ("Bệnh viện", "Massage",
+// "Siêu thị", ...), so whole-word matching is safe even when the place name
+// itself looks like a food business. Spa/massage shops stay rejected here; a
+// coffee shop whose name merely mentions "spa" survives because its category
+// is "Coffee shop", not "Spa".
+const NON_FOOD_CATEGORY_PATTERNS: RegExp[] = [
+  /\bbenh vien\b/,
+  /\bhospital\b/,
+  /\bphong kham\b/,
+  /\bclinic\b/,
+  /\bmedical\b/,
+  /\bnha khoa\b/,
+  /\bdentist\b/,
+  /\bdental\b/,
+  /\bnha thuoc\b/,
+  /\bpharmacy\b/,
+  /\bkaraoke\b/,
+  /\bktv\b/,
+  /\bspa\b/,
+  /\bmassage\b/,
+  /\bnails\b/,
+  /\bhair\b/,
+  /\bbarber\b/,
+  /\bsalon\b/,
+  /\bcat toc\b/,
+  /\btattoo\b/,
+  /\bpiercing\b/,
+  /\btrang trai\b/,
+  /\bnong trai\b/,
+  /\bnong truong\b/,
+  /\bnong san\b/,
+  /\bnong nghiep\b/,
+  /\bfarm\b/,
+  /\bsieu thi\b/,
+  /\bsupermarket\b/,
+  /\bmall\b/,
+  /\bmarket\b/,
+  /\bcho\b/,
+  /\btap hoa\b/,
+  /\btruong\b/,
+  /\bschool\b/,
+  /\buniversity\b/,
+  /\bdai hoc\b/,
+  /\bngan hang\b/,
+  /\bbank\b/,
+  /\bvan phong\b/,
+  /\bchua\b/,
+  /\bnha tho\b/,
+  /\btemple\b/,
+  /\bchurch\b/,
+  /\bpagoda\b/,
+  /\bhoi nghi\b/,
+  /\byen tiec\b/,
+  /\bconvention\b/,
+  /\bwedding\b/,
+  /\bsu kien\b/,
+  /\bcay xang\b/,
+  /\bgas station\b/,
+  /\bsua xe\b/,
+  /\brua xe\b/,
+  /\bcar wash\b/,
+  /\bgarage\b/,
+  /\bkhach san\b/,
+  /\bhotel\b/,
+  /\bresort\b/,
+  /\bhomestay\b/,
+  /\bnha nghi\b/,
+  /\bthu y\b/,
+  /\bveterinarian\b/,
+  /\bpet\b/,
+  /\bgym\b/,
+  /\bfitness\b/,
+  /\bphong tap\b/,
+  /\bhoa\b/,
+  /\bflower\b/,
+  /\bflorist\b/,
+  /\bcay canh\b/,
+  /\bdien thoai\b/,
+  /\bmay tinh\b/,
+  /\belectronics\b/,
+  /\bbat dong san\b/,
+  /\breal estate\b/,
+  /\bchung cu\b/,
+];
+
+// Junk/misplaced names that are not real food businesses. Medical prefixes are
+// anchored so legit names such as "PHỞ BÒ NGA - GẦN BỆNH VIỆN TÂN PHÚ"
+// survive. Spa/massage words are intentionally absent from this name list so a
+// coffee shop advertising "spa/massage" on its sign is still a food place.
+const NON_FOOD_NAME_PATTERNS: RegExp[] = [
+  /^cho\b/,
+  /^benh vien\b/,
+  /^nha khoa\b/,
+  /^trung tam y te\b/,
+  /^phong kham\b/,
+  /^karaoke\b/,
+  /\bktv\b/,
+  /\bfarm\b/,
+  /\btrang trai\b/,
+  /\bnong trai\b/,
+  /\bnong truong\b/,
+  /\bnong san\b/,
+  /^da dong cua\b/,
+  /\bkhong ten\b/,
+  /^go!/,
+  /^trung tam (hoi nghi|yen tiec|su kien)\b/,
+  /^(nha be|binh chanh|can gio|cu chi|hoc mon|thu duc)$/,
+];
+
+function isAddressOnlyName(key: string): boolean {
+  if (!/^[0-9]/.test(key)) return false;
+  return /\bphuong\b/.test(key) && /\bquan\b/.test(key) && /\bthanh pho\b/.test(key);
+}
+
+export function rejectsNonFoodPlace(
+  name: string | undefined | null,
+  category: string | undefined | null,
+): boolean {
+  const nameKey = normalizeMatchKey(name);
+  const categoryKey = normalizeMatchKey(category);
+
+  if (categoryKey && NON_FOOD_CATEGORY_PATTERNS.some((pattern) => pattern.test(categoryKey))) {
+    return true;
+  }
+  if (nameKey) {
+    if (NON_FOOD_NAME_PATTERNS.some((pattern) => pattern.test(nameKey))) return true;
+    if (isAddressOnlyName(nameKey)) return true;
+  }
+  return false;
+}
+
 export function parseCoordinatesFromUrl(
   url: string | undefined | null,
 ): { latitude: number; longitude: number } | undefined {
@@ -203,7 +347,14 @@ const CATEGORY_LABEL_RULES: ReadonlyArray<{ slug: string; patterns: RegExp[] }> 
   },
   {
     slug: 'coffee-shop',
-    patterns: [/\bca phe\b/, /\bcoffee\b/, /\bcafe\b/, /\bcapuchino\b/, /\blatte\b/, /\bespresso\b/],
+    patterns: [
+      /\bca phe\b/,
+      /\bcoffee\b/,
+      /\bcafe\b/,
+      /\bcapuchino\b/,
+      /\blatte\b/,
+      /\bespresso\b/,
+    ],
   },
   {
     slug: 'vegetarian',
