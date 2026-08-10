@@ -192,11 +192,11 @@ test('visitor can navigate between discovery routes', async ({ page }) => {
   await page.context().setGeolocation({ latitude: 10.77, longitude: 106.7 });
 
   await page.goto('/');
-  await page.getByRole('link', { name: 'Dạo món' }).first().click();
+  await page.getByRole('link', { name: 'Khám phá' }).first().click();
   await expect(page).toHaveURL(/\/discover$/);
   await expect(page.getByRole('heading', { name: /Dạo món trước khi/ })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Quanh tôi' }).first().click();
+  await page.getByRole('link', { name: 'Bản đồ' }).first().click();
   await expect(page).toHaveURL(/\/map$/);
   await expect(page.getByRole('heading', { name: 'Quán quanh bạn' })).toBeVisible();
   await expect(page.getByText('BẢN ĐỒ KÈO ĂN')).toBeVisible();
