@@ -64,3 +64,27 @@ test('listSimilar clamps the requested limit to the public maximum', async () =>
 
   assert.deepEqual(calls[0].values, ['restaurant-1', 20]);
 });
+
+test('list matches known taste values through the dish attribute taxonomy', async () => {
+  const calls: Array<{ text: string; values: unknown[] }> = [];
+  const database = {
+    async query<T extends object>(text: string, values: unknown[] = []) {
+      calls.push({ text, values });
+      return { rows: [], rowCount: 0 } as { rows: T[]; rowCount: number };
+    },
+  };
+  const repository = new RestaurantsRepository(database as never);
+
+  await repository.list({ tastes: ['nóng'], limit: 10 });
+
+  assert.equal(calls.length, 1);
+  // A canonical attribute ("nóng" -> normalized "nong") is matched via
+  // dish_attribute joined to food_attribute, not by a literal dish-name ILIKE.
+  assert.match(calls[0].text, /dish_attribute taste_da/);
+  assert.match(calls[0].text, /food_attribute taste_fa/);
+  assert.match(calls[0].text, /taste_fa\.normalized/);
+  assert.ok(calls[0].values.includes('nong'));
+  // The literal dish-name fallback remains as an OR branch so an unknown
+  // dish phrase (e.g. "bún bò huế" from intent) still matches names.
+  assert.match(calls[0].text, /OR EXISTS \(SELECT 1 FROM dish taste_ds2/);
+});

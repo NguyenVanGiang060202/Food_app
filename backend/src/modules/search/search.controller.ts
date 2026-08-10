@@ -21,6 +21,7 @@ import { AuthService } from '../auth/auth.service';
 import type { AuthUser } from '../auth/auth.types';
 import { AiIntentService } from '../ai/ai-intent.service';
 import type { AiIntent } from '../ai/ai.types';
+import type { RestaurantFilters } from '../restaurants/restaurants.types';
 
 interface InterpretedFilters {
   category?: string;
@@ -86,6 +87,47 @@ const FILTERABLE_CATEGORY_SLUGS = new Set([
   'beverage',
 ]);
 
+// A recommendations cursor carries the fully resolved filters (including any
+// AI interpretation and taxonomy fallbacks) plus an offset, so a later page
+// re-runs the exact same query deterministically without invoking the LLM
+// again. The repository itself only understands a bare { offset } cursor.
+interface RecommendationCursorPayload {
+  offset: number;
+  filters: Omit<RestaurantFilters, 'limit'>;
+}
+const encodeOffsetCursor = (offset: number): string =>
+  Buffer.from(JSON.stringify({ offset })).toString('base64url');
+const decodeOffsetCursor = (cursor: string | null): number | null => {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
+      offset?: number;
+    };
+    return typeof parsed.offset === 'number' ? parsed.offset : null;
+  } catch {
+    return null;
+  }
+};
+const encodeRecommendationCursor = (payload: RecommendationCursorPayload): string =>
+  Buffer.from(JSON.stringify(payload)).toString('base64url');
+const decodeRecommendationCursor = (cursor: string): RecommendationCursorPayload | null => {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(cursor, 'base64url').toString('utf8'),
+    ) as RecommendationCursorPayload;
+    if (
+      !parsed ||
+      typeof parsed.offset !== 'number' ||
+      !parsed.filters ||
+      typeof parsed.filters !== 'object'
+    )
+      return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
 function interpretQuery(query: string): InterpretedFilters {
   const normalized = query.toLocaleLowerCase('vi-VN');
   const category = CATEGORY_ALIASES.find(([alias]) => normalized.includes(alias))?.[1];
@@ -104,7 +146,10 @@ function interpretQuery(query: string): InterpretedFilters {
   return { ...(category ? { category } : {}), ...(district ? { district } : {}), attributes };
 }
 
-function firstFilterableCategory(intent: AiIntent | null, interpreted: InterpretedFilters): string | undefined {
+function firstFilterableCategory(
+  intent: AiIntent | null,
+  interpreted: InterpretedFilters,
+): string | undefined {
   if (intent && intent.categories.length) {
     const fromIntent = intent.categories.find((slug) => FILTERABLE_CATEGORY_SLUGS.has(slug));
     if (fromIntent) return fromIntent;
@@ -141,9 +186,7 @@ export class SearchController {
 
   @Post('interpret')
   async interpret(@Body() body: InterpretSearchDto) {
-    const intent = this.aiIntent?.isEnabled()
-      ? await this.aiIntent.interpret(body.query)
-      : null;
+    const intent = this.aiIntent?.isEnabled() ? await this.aiIntent.interpret(body.query) : null;
     const interpreted = interpretQuery(body.query);
     const filters: InterpretedFilters & {
       priceLevel?: number;
@@ -164,9 +207,7 @@ export class SearchController {
       attributes: interpreted.attributes,
       ...(intent?.priceLevel ? { priceLevel: intent.priceLevel } : {}),
       ...(intent?.minRating ? { minRating: intent.minRating } : {}),
-      ...(intent?.openNow === null || intent === null
-        ? {}
-        : { openNow: intent?.openNow }),
+      ...(intent?.openNow === null || intent === null ? {} : { openNow: intent?.openNow }),
       ...(intent?.distanceKm ? { distanceKm: intent.distanceKm } : {}),
     };
     return {
@@ -188,18 +229,16 @@ export class RecommendationsController {
   ) {}
   @Post()
   async recommend(@Body() body: RecommendationDto) {
+    if (body.cursor) return this.recommendNextPage(body);
     const interpreted = interpretQuery(body.query);
-    const intent = this.aiIntent?.isEnabled()
-      ? await this.aiIntent.interpret(body.query)
-      : null;
+    const intent = this.aiIntent?.isEnabled() ? await this.aiIntent.interpret(body.query) : null;
     const category = firstFilterableCategory(intent, interpreted);
     const district = body.filters?.area ?? intent?.district ?? interpreted.district;
     const priceLevel = body.filters?.priceLevel ?? intent?.priceLevel ?? undefined;
     const minRating = body.filters?.minRating ?? intent?.minRating ?? undefined;
     const openNow = body.filters?.openNow ?? intent?.openNow ?? undefined;
     const radiusMeters =
-      body.filters?.radiusMeters ??
-      (intent?.distanceKm ? intent.distanceKm * 1000 : undefined);
+      body.filters?.radiusMeters ?? (intent?.distanceKm ? intent.distanceKm * 1000 : undefined);
     const tastes = [
       ...(body.filters?.taste ?? []),
       ...(intent?.tastes ?? []),
@@ -224,38 +263,34 @@ export class RecommendationsController {
       tastes,
       limit: body.limit,
     };
-    let page = await this.restaurantsService.list(filters);
-    if (
-      !page.data.length &&
-      filters.query &&
-      (filters.category || filters.dishTypes?.length || filters.tastes?.length)
-    ) {
-      // Query text is more reliable than taxonomy for Vietnamese dish names.
-      // A restaurant may serve mì without having the `noodle` category linked.
-      page = await this.restaurantsService.list({
-        query: filters.query,
-        latitude: filters.latitude,
-        longitude: filters.longitude,
-        radiusMeters: filters.radiusMeters,
-        limit: filters.limit,
-      });
+    // Track the exact filters that produced the returned page so a follow-up
+    // (cursor) request can replay the same query without re-running the LLM.
+    let effective: RestaurantFilters = filters;
+    let page = await this.restaurantsService.list(effective);
+    if (!page.data.length && filters.query && (filters.category || filters.dishTypes?.length)) {
+      // The category/dish-type taxonomy can be incomplete for a restaurant
+      // that clearly serves something (e.g. mì without the `noodle` link).
+      // Retry keeping the query text and the explicit taste filters, which
+      // now resolve through dish attributes (food_attribute / dish_attribute).
+      effective = { ...filters, category: undefined, dishTypes: undefined };
+      page = await this.restaurantsService.list(effective);
     }
     if (!page.data.length && filters.query) {
-      page = await this.restaurantsService.list({ ...filters, query: undefined });
+      effective = { ...filters, query: undefined };
+      page = await this.restaurantsService.list(effective);
     }
     if (!page.data.length) {
-      // A natural-language prompt is a discovery entry point, not a
-      // strict SQL query. Do not leave the user with an empty page when
-      // a taste/category phrase has no exact data match. Preserve an
-      // explicit location radius when available, then rank candidates.
-      page = await this.restaurantsService.list({
-        latitude: filters.latitude,
-        longitude: filters.longitude,
-        radiusMeters: filters.radiusMeters,
-        sort: RestaurantSort.Rating,
-        limit: filters.limit,
-      });
+      // A natural-language prompt is a discovery entry point, but the user's
+      // explicit taste/category/distance filters are intent, not decoration.
+      // Drop only the free-text query and rank the remaining candidates by
+      // rating. Never silently drop the filters and return unrelated
+      // top-rated restaurants (e.g. Cơm tấm for a "món ngọt nóng" filter).
+      effective = { ...filters, query: undefined, sort: RestaurantSort.Rating };
+      page = await this.restaurantsService.list(effective);
     }
+    const snapshot: Omit<RestaurantFilters, 'limit'> = { ...effective };
+    delete (snapshot as { limit?: number }).limit;
+    const nextOffset = page.meta.nextCursor ? decodeOffsetCursor(page.meta.nextCursor) : null;
     return {
       data: page.data.slice(0, body.limit).map((restaurant) => ({
         restaurant,
@@ -271,6 +306,45 @@ export class RecommendationsController {
           },
         ),
       })),
+      meta: {
+        nextCursor:
+          nextOffset !== null
+            ? encodeRecommendationCursor({ offset: nextOffset, filters: snapshot })
+            : null,
+      },
+    };
+  }
+
+  private async recommendNextPage(body: RecommendationDto) {
+    const decoded = decodeRecommendationCursor(body.cursor!);
+    if (!decoded) throw new BadRequestException('Invalid recommendations cursor.');
+    const page = await this.restaurantsService.list({
+      ...decoded.filters,
+      limit: body.limit,
+      cursor: encodeOffsetCursor(decoded.offset),
+    });
+    const nextOffset = page.meta.nextCursor ? decodeOffsetCursor(page.meta.nextCursor) : null;
+    return {
+      data: page.data.slice(0, body.limit).map((restaurant) => ({
+        restaurant,
+        explanation: this.explain(
+          restaurant.categories.map((c) => c.slug),
+          {
+            category: decoded.filters.category,
+            district: decoded.filters.district,
+            priceLevel: decoded.filters.priceLevel,
+            openNow: decoded.filters.openNow,
+            tastes: decoded.filters.tastes,
+            location: decoded.filters.latitude !== undefined ? true : undefined,
+          },
+        ),
+      })),
+      meta: {
+        nextCursor:
+          nextOffset !== null
+            ? encodeRecommendationCursor({ offset: nextOffset, filters: decoded.filters })
+            : null,
+      },
     };
   }
 

@@ -15,9 +15,10 @@ import { Header } from '@/components/site/Header';
 import { MapCanvas } from '@/components/site/MapCanvas';
 import { SmartImage } from '@/components/site/SmartImage';
 import type { Restaurant } from '@/lib/food-data';
-import { listRestaurants } from '@/lib/api';
+import { listRestaurants, listTrendingRestaurants } from '@/lib/api';
 import { attrLabel, distanceOptions, filterGroups } from '@/lib/taste-filters';
 import { SaveRestaurantButton } from '@/components/site/SaveRestaurantButton';
+import { CENTRAL_DISTRICTS } from '@/lib/central-districts';
 
 export function MapPage() {
   const [attrs, setAttrs] = useState<string[]>([]);
@@ -25,17 +26,21 @@ export function MapPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [expandedFilters, setExpandedFilters] = useState(false);
   const [openGroup, setOpenGroup] = useState('feel');
-  const [maxDistance, setMaxDistance] = useState<number>(5);
+  const [maxDistance, setMaxDistance] = useState<number>(10);
   const [openNow, setOpenNow] = useState(false);
   const [location, setLocation] = useState<[number, number] | null>(null);
   const [locationBusy, setLocationBusy] = useState(false);
   const [locationError, setLocationError] = useState(false);
   const [items, setItems] = useState<Restaurant[]>([]);
+  const [trendingItems, setTrendingItems] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [trendingLoading, setTrendingLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [mobileListOpen, setMobileListOpen] = useState(false);
+  const [locateTrigger, setLocateTrigger] = useState(0);
   const locationEpochRef = useRef(0);
+  const trendingLoadedRef = useRef(false);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -71,12 +76,13 @@ export function MapPage() {
     let cancelled = false;
     if (!location) {
       setItems([]);
+      setLoading(false);
       return () => {
         cancelled = true;
       };
     }
     setLoading(true);
-    const radii = maxDistance === 5 ? [5, 8, 10] : [maxDistance];
+    const radii = maxDistance === 10 ? [10, 12, 15] : [maxDistance];
     const loadNearby = async () => {
       for (const radius of radii) {
         const result = await listRestaurants({
@@ -95,7 +101,7 @@ export function MapPage() {
     void loadNearby()
       .then((result) => {
         if (!cancelled) {
-          setItems(result.slice(0, 20));
+          setItems(result.slice(0, 30));
           setLoadError(false);
         }
       })
@@ -113,6 +119,35 @@ export function MapPage() {
     };
   }, [attrs, location, maxDistance, openNow, reloadKey]);
 
+  useEffect(() => {
+    if (trendingLoadedRef.current) return;
+    if (location) return;
+    let cancelled = false;
+    setTrendingLoading(true);
+    const loadTrending = async () => {
+      const district = CENTRAL_DISTRICTS[Math.floor(Math.random() * CENTRAL_DISTRICTS.length)];
+      return listTrendingRestaurants({ limit: 30, district, sort: 'rating' });
+    };
+    void loadTrending()
+      .then((result) => {
+        if (!cancelled) {
+          setTrendingItems(result.slice(0, 30));
+          trendingLoadedRef.current = true;
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTrendingItems([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTrendingLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const toggle = (value: string) =>
     setAttrs((current) =>
       current.includes(value) ? current.filter((item) => item !== value) : [...current, value],
@@ -126,6 +161,7 @@ export function MapPage() {
     const epoch = locationEpochRef.current;
     setLocationBusy(true);
     setLocationError(false);
+    setLocateTrigger((t) => t + 1); // Force map recenter
     navigator.geolocation.getCurrentPosition(
       (position) => {
         if (locationEpochRef.current === epoch)
@@ -142,7 +178,7 @@ export function MapPage() {
   const reset = () => {
     locationEpochRef.current += 1;
     setAttrs([]);
-    setMaxDistance(5);
+    setMaxDistance(10);
     setOpenNow(false);
     setLocation(null);
     setLocationError(false);
@@ -175,7 +211,7 @@ export function MapPage() {
       )}
       {!location && !loading && (
         <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          <p>Cho phép vị trí để xem các quán trong bán kính 5km.</p>
+          <p>Cho phép vị trí để xem các quán trong bán kính 10km.</p>
           <button
             onClick={locate}
             className="mt-3 rounded-full bg-foreground px-4 py-2 text-sm text-background"
@@ -204,11 +240,7 @@ export function MapPage() {
                   className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
               ) : (
-                <img
-                  src="/no-photo.svg"
-                  alt="Chưa có ảnh"
-                  className="h-full w-full object-cover"
-                />
+                <img src="/no-photo.svg" alt="Chưa có ảnh" className="h-full w-full object-cover" />
               )}{' '}
               {restaurant.rating != null && restaurant.rating > 0 && (
                 <span className="absolute bottom-1 left-1 rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-medium">
@@ -390,7 +422,7 @@ export function MapPage() {
                 <button
                   key={item.value}
                   onClick={() => {
-                    const next = maxDistance === item.value ? 5 : (item.value ?? 5);
+                    const next = maxDistance === item.value ? 10 : (item.value ?? 10);
                     setMaxDistance(next);
                     locate();
                   }}
@@ -451,6 +483,8 @@ export function MapPage() {
               restaurants={items}
               userLocation={location}
               onHover={setActive}
+              onLocate={locate}
+              locateTrigger={locateTrigger}
             />
           </div>
         </div>
@@ -487,8 +521,7 @@ export function MapPage() {
               dragElastic={{ top: 0, bottom: 0.4 }}
               dragMomentum={false}
               onDragEnd={(_event, info) => {
-                if (info.offset.y > 80 || info.velocity.y > 300)
-                  setMobileListOpen(false);
+                if (info.offset.y > 80 || info.velocity.y > 300) setMobileListOpen(false);
               }}
               className="flex h-[34svh] cursor-grab flex-col overflow-hidden rounded-t-[24px] border-x border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_60px_-20px_rgba(47,42,37,0.4)] active:cursor-grabbing"
             >

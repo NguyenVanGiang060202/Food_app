@@ -62,7 +62,7 @@ test('recommendation retries without the query when the first search is empty', 
   assert.equal(result.data[0].restaurant.id, 'fallback');
 });
 
-test('recommendation falls back to rated restaurants when taste filters have no exact match', async () => {
+test('recommendation falls back to rated restaurants but preserves the taste filters', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const databaseService = {
     list: async (filters: Record<string, unknown>) => {
@@ -80,7 +80,9 @@ test('recommendation falls back to rated restaurants when taste filters have no 
 
   assert.equal(result.data[0].restaurant.id, 'rated');
   assert.equal(calls.at(-1)?.sort, 'rating');
-  assert.equal(calls.at(-1)?.tastes, undefined);
+  // The discovery fallback drops only the free-text query; the user's explicit
+  // taste filter remains so we never return unrelated top-rated restaurants.
+  assert.deepEqual(calls.at(-1)?.tastes, ['nóng']);
 });
 
 test('unsupported cuisine aliases do not become impossible category filters', async () => {

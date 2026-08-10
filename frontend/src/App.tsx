@@ -133,12 +133,18 @@ function DiscoverPage() {
           >
             {busy
               ? Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="h-full w-64 shrink-0 snap-start">
+                  <div
+                    key={index}
+                    className="h-full shrink-0 snap-start w-[calc(50%-0.5rem)] md:w-[calc(33.333%-0.67rem)] lg:w-[calc(25%-0.75rem)]"
+                  >
                     <RestaurantCardSkeleton />
                   </div>
                 ))
               : catalog.map((restaurant) => (
-                  <div key={restaurant.id} className="h-full w-64 shrink-0 snap-start">
+                  <div
+                    key={restaurant.id}
+                    className="h-full shrink-0 snap-start w-[calc(50%-0.5rem)] md:w-[calc(33.333%-0.67rem)] lg:w-[calc(25%-0.75rem)]"
+                  >
                     <RestaurantCard r={restaurant} />
                   </div>
                 ))}
@@ -201,7 +207,9 @@ function DiscoverPage() {
           <div className="text-xs uppercase tracking-widest text-muted-foreground">
             Chọn theo cảm hứng
           </div>
-          <h2 className="mt-2 font-display text-3xl">Không biết gọi gì? Bắt đầu từ một cảm giác.</h2>
+          <h2 className="mt-2 font-display text-3xl">
+            Không biết gọi gì? Bắt đầu từ một cảm giác.
+          </h2>
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
               {
@@ -232,7 +240,9 @@ function DiscoverPage() {
               >
                 <div className="font-display text-xl">{mood.title}</div>
                 <p className="mt-2 text-sm leading-5 text-muted-foreground">{mood.text}</p>
-                <span className="mt-5 inline-block text-xs font-medium text-primary">Hỏi Bếp →</span>
+                <span className="mt-5 inline-block text-xs font-medium text-primary">
+                  Hỏi Bếp →
+                </span>
               </Link>
             ))}
           </div>
@@ -496,7 +506,9 @@ function RestaurantDetailPage() {
         <section className="mt-10 rounded-2xl border border-border bg-card p-5 md:p-6">
           <h2 className="font-display text-2xl">Thông tin quán</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {restaurant.hours && <InfoItem icon={Clock} label="Giờ mở cửa" value={restaurant.hours} />}
+            {restaurant.hours && (
+              <InfoItem icon={Clock} label="Giờ mở cửa" value={restaurant.hours} />
+            )}
             {detail.phone && (
               <InfoItem
                 icon={Phone}

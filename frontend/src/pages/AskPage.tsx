@@ -106,10 +106,10 @@ export function AskPage() {
   const [active, setActive] = useState<string | null>(null);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationBusy, setLocationBusy] = useState(false);
+  const [locateTrigger, setLocateTrigger] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const requestRef = useRef<AbortController | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
-  const consumedPromptRef = useRef<string | null>(null);
   const filters = searchContext.filters;
   const submitted = turns.length > 0 || busy || result.length > 0;
   const activeCount =
@@ -163,6 +163,7 @@ export function AskPage() {
   const locate = () => {
     if (!navigator.geolocation) return Promise.resolve(null);
     setLocationBusy(true);
+    setLocateTrigger((t) => t + 1); // Force map recenter
     return new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -180,9 +181,23 @@ export function AskPage() {
     });
   };
 
-  const runSearch = async (keyword: string, nextFilters = filters) => {
+  const locateAndRefresh = async () => {
+    const next = await locate();
+    if (next && searchContext.keyword && submitted) {
+      // If no distance filter set, apply a default 5km radius when locating
+      const nextFilters = filters.maxDistanceKm ? filters : { ...filters, maxDistanceKm: 5 };
+      void runSearch(searchContext.keyword, nextFilters, next);
+    }
+    return next;
+  };
+
+  const runSearch = async (
+    keyword: string,
+    nextFilters = filters,
+    locationOverride?: { latitude: number; longitude: number } | null,
+  ) => {
     const trimmed = keyword.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed) return;
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
@@ -190,7 +205,13 @@ export function AskPage() {
     setPendingQuery(trimmed);
     setInterpreted(null);
     try {
-      const requestLocation = nextFilters.maxDistanceKm && !location ? await locate() : location;
+      const requestLocation =
+        locationOverride !== undefined
+          ? locationOverride
+          : nextFilters.maxDistanceKm && !location
+            ? await locate()
+            : location;
+      const effectiveRadiusKm = nextFilters.maxDistanceKm ?? (requestLocation ? 5 : undefined);
       const recommendations = await getRecommendations(
         {
           query: trimmed,
@@ -202,8 +223,8 @@ export function AskPage() {
             minRating: nextFilters.minRating,
             priceLevel: nextFilters.priceLevel,
             sort: searchContext.sort,
-            ...(requestLocation && nextFilters.maxDistanceKm
-              ? { radiusMeters: nextFilters.maxDistanceKm * 1000 }
+            ...(requestLocation && effectiveRadiusKm
+              ? { radiusMeters: effectiveRadiusKm * 1000 }
               : {}),
           },
         },
@@ -238,7 +259,7 @@ export function AskPage() {
           },
         ]);
     } finally {
-      if (!controller.signal.aborted) {
+      if (requestRef.current === controller) {
         setBusy(false);
         setPendingQuery(null);
       }
@@ -247,8 +268,7 @@ export function AskPage() {
 
   const incomingPrompt = new URLSearchParams(routeLocation.search).get('prompt')?.trim() ?? '';
   useEffect(() => {
-    if (!incomingPrompt || consumedPromptRef.current === incomingPrompt) return;
-    consumedPromptRef.current = incomingPrompt;
+    if (!incomingPrompt) return;
     void runSearch(incomingPrompt);
   }, [incomingPrompt]);
 
@@ -291,7 +311,13 @@ export function AskPage() {
       {!submitted ? (
         <div className="flex flex-1 flex-col justify-center py-10">
           <Link to="/" className="mb-6 inline-flex items-center gap-2 self-start md:self-center">
-            <img src={mark} alt="" width={512} height={512} className="h-6 w-6 object-contain md:h-8 md:w-8" />
+            <img
+              src={mark}
+              alt=""
+              width={512}
+              height={512}
+              className="h-6 w-6 object-contain md:h-8 md:w-8"
+            />
             <span className="font-display text-base font-semibold tracking-tight md:text-xl">
               Bếp<span className="text-primary">.</span>
             </span>
@@ -357,13 +383,7 @@ export function AskPage() {
       )}
       <div className="sticky bottom-16 z-30 space-y-3 bg-background pb-3 pt-2 md:bottom-0 md:pb-4">
         {showFilters && (
-          <FilterPanel
-            filters={filters}
-            toggleAttr={toggleAttr}
-            onChange={refineSearch}
-            hasLocation={location !== null}
-            onLocate={locate}
-          />
+          <FilterPanel filters={filters} toggleAttr={toggleAttr} onChange={refineSearch} />
         )}
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -379,7 +399,7 @@ export function AskPage() {
             )}
           </button>
           <button
-            onClick={locate}
+            onClick={() => void locateAndRefresh()}
             disabled={locationBusy}
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${location ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card'}`}
           >
@@ -505,6 +525,8 @@ export function AskPage() {
       activeId={active}
       onHover={setActive}
       userLocation={location ? [location.latitude, location.longitude] : null}
+      onLocate={locateAndRefresh}
+      locateTrigger={locateTrigger}
     />
   );
   const lastTurn = turns.length ? turns[turns.length - 1] : null;
@@ -548,7 +570,7 @@ export function AskPage() {
             <div className="fixed inset-x-3 bottom-24 z-[1200] flex items-center gap-2 lg:hidden">
               <button
                 type="button"
-                onClick={() => void locate()}
+                onClick={() => void locateAndRefresh()}
                 disabled={locationBusy}
                 aria-label={location ? 'Vị trí đã bật' : 'Bật vị trí'}
                 title={location ? 'Đã bật vị trí' : 'Bật vị trí'}
@@ -610,8 +632,7 @@ export function AskPage() {
               dragElastic={{ top: 0, bottom: 0.4 }}
               dragMomentum={false}
               onDragEnd={(_event, info) => {
-                if (info.offset.y > 80 || info.velocity.y > 300)
-                  setMobileListOpen(false);
+                if (info.offset.y > 80 || info.velocity.y > 300) setMobileListOpen(false);
               }}
               className="flex h-[34svh] cursor-grab flex-col overflow-hidden rounded-t-[24px] border-x border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_60px_-20px_rgba(47,42,37,0.4)] active:cursor-grabbing"
             >
@@ -728,8 +749,6 @@ export function AskPage() {
                       filters={filters}
                       toggleAttr={toggleAttr}
                       onChange={refineSearch}
-                      hasLocation={location !== null}
-                      onLocate={locate}
                     />
                   </div>
                 )}
@@ -784,16 +803,12 @@ export function AskPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void locate()}
+                      onClick={() => void locateAndRefresh()}
                       disabled={locationBusy}
                       className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm ${location ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground/80'}`}
                     >
                       <LocateFixed className="h-4 w-4" />
-                      {locationBusy
-                        ? 'Đang định vị...'
-                        : location
-                          ? 'Đã bật vị trí'
-                          : 'Bật vị trí'}
+                      {locationBusy ? 'Đang định vị...' : location ? 'Đã bật vị trí' : 'Bật vị trí'}
                     </button>
                   </div>
                   <button
@@ -907,9 +922,7 @@ function InterpretationChips({ value }: { value: InterpretedSearch | null }) {
   return (
     <div className="flex flex-col gap-1.5">
       {value.aiSummary ? (
-        <p className="text-[11px] italic text-primary">
-          Bếp nghe hiểu: {value.aiSummary}
-        </p>
+        <p className="text-[11px] italic text-primary">Bếp nghe hiểu: {value.aiSummary}</p>
       ) : null}
       {chips.length ? (
         <div className="flex flex-wrap gap-1.5" aria-label="Tiêu chí Bếp đã hiểu">
@@ -931,14 +944,10 @@ function FilterPanel({
   filters,
   toggleAttr,
   onChange,
-  hasLocation,
-  onLocate,
 }: {
   filters: Filters;
   toggleAttr: (value: string) => void;
   onChange: (next: Filters) => void;
-  hasLocation: boolean;
-  onLocate: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [openGroup, setOpenGroup] = useState('feel');
@@ -972,7 +981,6 @@ function FilterPanel({
             key={preset.label}
             onClick={() => {
               applyQuick(preset);
-              if (preset.maxDistanceKm && !hasLocation) onLocate();
             }}
             className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs hover:border-primary hover:text-primary"
           >

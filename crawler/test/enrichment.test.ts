@@ -5,10 +5,8 @@ import {
   normalizeForClassification,
   CATEGORY_MIN_CONFIDENCE,
 } from '../src/enrichment/category-classifier';
-import {
-  extractDishesFromText,
-  normalizeText,
-} from '../src/enrichment/dish-extractor';
+import { extractDishesFromText, normalizeText } from '../src/enrichment/dish-extractor';
+import { classifyAttributes } from '../src/enrichment/attribute-classifier';
 
 test('normalizeForClassification strips diacritics and lowercases', () => {
   assert.equal(normalizeForClassification('Cà Phê Sài Gòn'), 'ca phe sai gon');
@@ -61,11 +59,10 @@ test('normalizeText strips diacritics', () => {
 });
 
 test('extractDishesFromText finds a dish in a single review', () => {
-  const suggestions = extractDishesFromText(
-    'r1',
-    'Quán Ăn Sài Gòn',
-    ['Bún riêu ở đây ngon, khách đông', 'Bún riêu không bị nhạt'],
-  );
+  const suggestions = extractDishesFromText('r1', 'Quán Ăn Sài Gòn', [
+    'Bún riêu ở đây ngon, khách đông',
+    'Bún riêu không bị nhạt',
+  ]);
   const bun = suggestions.find((suggestion) => suggestion.normalized === 'bun rieu');
   assert.ok(bun);
   assert.equal(bun.display, 'Bún riêu');
@@ -88,5 +85,26 @@ test('extractDishesFromText requires a real phrase, not a token fragment', () =>
   // "mi" must not match inside unrelated words (e.g. "mì" not present, or a
   // substring of a longer word).
   const suggestions = extractDishesFromText('r4', 'Không Tên', ['Vừa ăn xong mới ra.']);
-  assert.equal(suggestions.find((suggestion) => suggestion.normalized === 'mi ga'), undefined);
+  assert.equal(
+    suggestions.find((suggestion) => suggestion.normalized === 'mi ga'),
+    undefined,
+  );
+});
+
+test('classifyAttributes tags a spicy beef noodle dish across dimensions', () => {
+  const attributes = classifyAttributes('bun bo hue');
+  const codes = attributes.map((attribute) => attribute.code);
+  assert.ok(codes.includes('hot'));
+  assert.ok(codes.includes('spicy'));
+  assert.ok(codes.includes('beef'));
+  assert.ok(codes.includes('filling'));
+});
+
+test('classifyAttributes tags a dessert as sweet and cool', () => {
+  const codes = classifyAttributes('sua chua nep cam').map((attribute) => attribute.code);
+  assert.deepEqual([...codes].sort(), ['cool', 'snack', 'sweet']);
+});
+
+test('classifyAttributes returns nothing for an unknown dish', () => {
+  assert.deepEqual(classifyAttributes('bi mat'), []);
 });

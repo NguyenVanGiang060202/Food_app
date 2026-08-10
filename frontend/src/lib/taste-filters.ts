@@ -114,6 +114,7 @@ export const ratingOptions: TasteOption[] = [
 export const distanceOptions = [
   { value: 2, label: 'Trong 2km' },
   { value: 5, label: 'Trong 5km' },
+  { value: 10, label: 'Trong 10km' },
 ];
 
 export const attrLabel = (value: string) =>

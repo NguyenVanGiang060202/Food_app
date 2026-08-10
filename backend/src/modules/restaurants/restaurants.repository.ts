@@ -13,8 +13,9 @@ import type {
 import { RestaurantSort } from './restaurants.dto';
 
 interface Cursor {
-  updatedAt: string;
-  id: string;
+  updatedAt?: string;
+  id?: string;
+  offset?: number;
 }
 interface SummaryRow {
   id: string;
@@ -45,14 +46,17 @@ const decodeCursor = (cursor?: string): Cursor | undefined => {
   if (!cursor) return undefined;
   try {
     const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Cursor;
-    if (!parsed.updatedAt || !parsed.id) return undefined;
-    return parsed;
+    if (typeof parsed.offset === 'number') return parsed;
+    if (parsed.updatedAt && parsed.id) return parsed;
+    return undefined;
   } catch {
     return undefined;
   }
 };
 const encodeCursor = (row: SummaryRow): string =>
   Buffer.from(JSON.stringify({ updatedAt: row.updated_at, id: row.id })).toString('base64url');
+const encodeOffsetCursor = (offset: number): string =>
+  Buffer.from(JSON.stringify({ offset })).toString('base64url');
 
 @Injectable()
 export class RestaurantsRepository {
@@ -139,8 +143,12 @@ export class RestaurantsRepository {
         .toLowerCase();
       const p = add(`%${taste}%`);
       const normalized = add(`%${normalizedTaste}%`);
+      const attributeNormalized = add(normalizedTaste);
+      // Prefer the food-attribute taxonomy (dish_attribute links produced by
+      // enrichment). Only fall back to a literal dish-name match for values
+      // that are not canonical attributes (e.g. "bún bò huế" from intent).
       where.push(
-        `EXISTS (SELECT 1 FROM dish taste_ds WHERE taste_ds.restaurant_id = r.id AND taste_ds.status = 'available' AND (taste_ds.name ILIKE ${p} OR taste_ds.normalized_name ILIKE ${p} OR taste_ds.normalized_name ILIKE ${normalized} OR COALESCE(taste_ds.description, '') ILIKE ${p}))`,
+        `(EXISTS (SELECT 1 FROM dish_attribute taste_da JOIN food_attribute taste_fa ON taste_fa.id = taste_da.attribute_id JOIN dish taste_ds ON taste_ds.id = taste_da.dish_id WHERE taste_ds.restaurant_id = r.id AND taste_ds.status = 'available' AND taste_fa.normalized = ${attributeNormalized} AND taste_fa.is_active = true) OR EXISTS (SELECT 1 FROM dish taste_ds2 WHERE taste_ds2.restaurant_id = r.id AND taste_ds2.status = 'available' AND (taste_ds2.name ILIKE ${p} OR taste_ds2.normalized_name ILIKE ${p} OR taste_ds2.normalized_name ILIKE ${normalized} OR COALESCE(taste_ds2.description, '') ILIKE ${p})))`,
       );
     }
     if (filters.city) {
@@ -167,7 +175,8 @@ export class RestaurantsRepository {
         `EXISTS (SELECT 1 FROM restaurant_hour oh WHERE oh.restaurant_id = r.id AND oh.day_of_week = EXTRACT(ISODOW FROM CURRENT_DATE)::smallint AND oh.is_closed = false AND ((oh.spans_next_day = false AND CURRENT_TIME BETWEEN oh.opens_at AND oh.closes_at) OR (oh.spans_next_day = true AND (CURRENT_TIME >= oh.opens_at OR CURRENT_TIME <= oh.closes_at))))`,
       );
     const cursor = decodeCursor(filters.cursor);
-    if (cursor && filters.sort === RestaurantSort.Newest)
+    const offset = cursor?.offset ?? 0;
+    if (cursor?.updatedAt && cursor?.id && filters.sort === RestaurantSort.Newest)
       where.push(
         `(r.updated_at, r.id) < (${add(cursor.updatedAt)}::timestamptz, ${add(cursor.id)}::uuid)`,
       );
@@ -181,13 +190,14 @@ export class RestaurantsRepository {
             : `${distanceOrder}relevance_score DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`;
     const limit = Math.min(filters.limit, 50);
     const limitParam = add(limit + 1);
+    const offsetParam = offset > 0 ? add(offset) : null;
     const result = await this.database.query<SummaryRow>(
       `SELECT r.id, r.name, l.formatted_address, ST_Y(l.coordinates::geometry) AS latitude, ST_X(l.coordinates::geometry) AS longitude, r.rating, r.review_count, r.price_level, cover.url AS cover_image_url, source.source_url, ${distanceSelect}, ${relevanceSelect}, r.updated_at,
             COALESCE(json_agg(DISTINCT jsonb_build_object('slug', c.slug, 'name', c.name)) FILTER (WHERE c.id IS NOT NULL), '[]') AS categories
           FROM restaurant r JOIN location l ON l.id = r.location_id LEFT JOIN restaurant_category rc ON rc.restaurant_id = r.id LEFT JOIN category c ON c.id = rc.category_id AND c.is_active = true
           LEFT JOIN LATERAL (SELECT ri.url FROM restaurant_image ri WHERE ri.restaurant_id = r.id AND ri.is_cover = true AND ri.status = 'active' ORDER BY ri.sort_order, ri.id LIMIT 1) cover ON true
           LEFT JOIN LATERAL (SELECT rs.source_url FROM restaurant_source rs JOIN data_source ds ON ds.id = rs.data_source_id WHERE rs.restaurant_id = r.id AND rs.status = 'active' AND ds.code = 'google_maps_playwright' AND rs.source_url IS NOT NULL ORDER BY rs.last_seen_at DESC, rs.id LIMIT 1) source ON true
-          WHERE ${where.join(' AND ')} GROUP BY r.id, l.id, cover.url, source.source_url ORDER BY ${order} LIMIT ${limitParam}`,
+          WHERE ${where.join(' AND ')} GROUP BY r.id, l.id, cover.url, source.source_url ORDER BY ${order} LIMIT ${limitParam}${offsetParam ? ` OFFSET ${offsetParam}` : ''}`,
       values,
     );
     const hasNext = result.rows.length > limit;
@@ -195,7 +205,12 @@ export class RestaurantsRepository {
     return {
       data: rows.map((row) => this.toSummary(row)),
       meta: {
-        nextCursor: hasNext && rows.length ? encodeCursor(rows[rows.length - 1]) : null,
+        nextCursor:
+          hasNext && rows.length
+            ? filters.sort === RestaurantSort.Newest
+              ? encodeCursor(rows[rows.length - 1])
+              : encodeOffsetCursor(offset + rows.length)
+            : null,
         limit,
       },
     };

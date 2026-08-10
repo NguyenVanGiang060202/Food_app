@@ -101,4 +101,5 @@ export class RecommendationDto {
   @Type(() => RecommendationFiltersDto)
   filters?: RecommendationFiltersDto;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit = 10;
+  @IsOptional() @Transform(trim) @IsString() @Length(1, 4000) cursor?: string;
 }

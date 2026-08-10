@@ -18,6 +18,8 @@ export function MapCanvas({
   onHover,
   labels,
   userLocation,
+  onLocate,
+  locateTrigger,
 }: {
   ids?: string[];
   restaurants?: Restaurant[];
@@ -25,16 +27,26 @@ export function MapCanvas({
   onHover: (id: string | null) => void;
   labels?: Record<string, string>;
   userLocation?: [number, number] | null;
+  onLocate?: () => void;
+  locateTrigger?: number;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   const markers = useRef<L.Marker[]>([]);
   const userMarker = useRef<L.CircleMarker | null>(null);
-const lastUserKeyRef = useRef<string | null>(null);
+  const lastUserKeyRef = useRef<string | null>(null);
+  const locateRequestedRef = useRef(false);
   const onHoverRef = useRef(onHover);
   const reduced = useReducedMotion();
   const [collapsed, setCollapsed] = useState(false);
   const [sized, setSized] = useState(false);
+
+  useEffect(() => {
+    if (locateTrigger != null) {
+      lastUserKeyRef.current = null;
+      locateRequestedRef.current = true;
+    }
+  }, [locateTrigger]);
   useEffect(() => {
     onHoverRef.current = onHover;
   }, [onHover]);
@@ -135,6 +147,10 @@ const lastUserKeyRef = useRef<string | null>(null);
       });
       markers.current.push(marker);
     });
+  }, [locatedItems, sized]);
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !sized) return;
     userMarker.current?.remove();
     userMarker.current = userLocation
       ? L.circleMarker(userLocation, {
@@ -149,20 +165,22 @@ const lastUserKeyRef = useRef<string | null>(null);
       : null;
     if (userLocation) {
       const userKey = `${userLocation[0].toFixed(5)},${userLocation[1].toFixed(5)}`;
-      if (userKey !== lastUserKeyRef.current) {
+      const wasLocateRequested = locateRequestedRef.current;
+      if (userKey !== lastUserKeyRef.current || wasLocateRequested) {
         lastUserKeyRef.current = userKey;
+        locateRequestedRef.current = false;
+        const duration = wasLocateRequested ? 0 : 0.3;
         if (locatedItems.length > 0) {
           const points: L.LatLngExpression[] = [userLocation];
           locatedItems.forEach((item) =>
             points.push([item.latitude!, item.longitude!] as L.LatLngTuple),
           );
           const bounds = L.latLngBounds(points);
-          const tooWide =
-            bounds.getSouthWest().distanceTo(bounds.getNorthEast()) > 8000;
-          if (tooWide) map.flyTo(userLocation, 14, { duration: 0.6 });
+          const tooWide = bounds.getSouthWest().distanceTo(bounds.getNorthEast()) > 8000;
+          if (tooWide) map.flyTo(userLocation, 14, { duration });
           else map.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
         } else {
-          map.flyTo(userLocation, 14, { duration: 0.6 });
+          map.flyTo(userLocation, 14, { duration });
         }
       }
     } else if (locatedItems.length === 1) {
@@ -178,7 +196,7 @@ const lastUserKeyRef = useRef<string | null>(null);
       lastUserKeyRef.current = null;
       map.setView(HO_CHI_MINH_CENTER, 12);
     }
-  }, [locatedItems, userLocation, sized]);
+  }, [userLocation, locatedItems, sized]);
   useEffect(() => {
     const map = mapInstance.current;
     if (!map || !activeId || !sized) return;
@@ -211,6 +229,28 @@ const lastUserKeyRef = useRef<string | null>(null);
     <div className="absolute inset-0">
       <style>{`.bep-map-marker-shell{background:transparent!important;border:0!important}.bep-map-marker{display:grid;place-items:center;width:30px;height:30px;border-radius:999px 999px 999px 0;background:#f97316;border:3px solid #fff;box-shadow:0 3px 10px rgba(67,20,7,.5),0 0 0 2px rgba(255,255,255,.72);transform:rotate(-45deg);transition:transform .2s,box-shadow .2s,opacity .2s,filter .2s}.bep-map-marker-core{width:9px;height:9px;border-radius:999px;background:#fff;transform:rotate(45deg);box-shadow:0 0 0 1px rgba(124,45,18,.25)}.bep-map-marker-is-active .bep-map-marker{transform:rotate(-45deg) scale(1.42);box-shadow:0 0 0 8px rgba(249,115,22,.2),0 5px 16px rgba(124,45,18,.5);animation:bep-marker-pulse 1.5s ease-in-out infinite}.bep-map-marker-is-muted{opacity:.82;filter:saturate(.9)}@keyframes bep-marker-pulse{0%,100%{box-shadow:0 0 0 5px rgba(249,115,22,.18),0 5px 16px rgba(124,45,18,.45)}50%{box-shadow:0 0 0 11px rgba(249,115,22,.04),0 5px 20px rgba(124,115,18,.55)}}@media (max-width:767px){.leaflet-control-zoom{display:none!important;visibility:hidden}}`}</style>
       <div ref={mapRef} className="h-full w-full" />
+      {onLocate && (
+        <button
+          type="button"
+          onClick={onLocate}
+          aria-label="Định vị lại"
+          title="Định vị lại"
+          className="absolute right-3 bottom-3 z-[400] grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow-lg backdrop-blur-sm text-foreground transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          <svg
+            className="h-5 w-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v2m0 16v2M2 12h2m16 0h2" />
+          </svg>
+        </button>
+      )}
       <AnimatePresence>
         {selected && (
           <motion.div

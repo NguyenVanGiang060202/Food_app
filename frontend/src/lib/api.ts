@@ -170,6 +170,10 @@ export type RecommendationItem = {
   restaurant: BackendRestaurantSummary;
   explanation?: string | null;
 };
+export type RecommendationPage = {
+  items: RecommendationItem[];
+  nextCursor: string | null;
+};
 export type InterpretedSearch = {
   query: string;
   aiSummary?: string | null;
@@ -269,6 +273,25 @@ export type RestaurantListOptions = RestaurantQueryOptions;
 export async function listRestaurants(options: RestaurantListOptions = {}): Promise<Restaurant[]> {
   const result = await request<{ data: BackendRestaurantSummary[] }>(
     `/restaurants?${buildRestaurantQuery(options)}`,
+  );
+  return result.data.map(toRestaurant);
+}
+
+export async function listTrendingRestaurants(
+  options: {
+    limit?: number;
+    district?: string;
+    sort?: 'rating' | 'newest';
+  } = {},
+): Promise<Restaurant[]> {
+  const { limit = 30, district, sort = 'rating' } = options;
+  const params = new URLSearchParams({
+    limit: String(limit),
+    sort: sort === 'rating' ? 'rating' : 'newest',
+    ...(district ? { district } : {}),
+  });
+  const result = await request<{ data: BackendRestaurantSummary[] }>(
+    `/restaurants?${params.toString()}`,
   );
   return result.data.map(toRestaurant);
 }

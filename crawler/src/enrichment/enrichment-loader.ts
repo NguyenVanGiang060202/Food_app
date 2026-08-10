@@ -10,19 +10,19 @@
 
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
-import {
-  CATEGORY_MIN_CONFIDENCE,
-  classifyCategory,
-} from './category-classifier';
+import { CATEGORY_MIN_CONFIDENCE, classifyCategory } from './category-classifier';
 import { extractDishesFromText } from './dish-extractor';
+import { classifyAttributes } from './attribute-classifier';
 
 const CATEGORY_SOURCE = 'enrichment:category:rules:v1';
 const DISH_SOURCE = 'enrichment:dish:lexicon:v1';
+const ATTRIBUTE_SOURCE = 'enrichment:attribute:rules:v1';
 
 export interface EnrichmentSummary {
   scanned: number;
   categoriesApplied: number;
   dishesApplied: number;
+  attributesApplied: number;
 }
 
 export interface EnrichOptions {
@@ -51,7 +51,12 @@ export class EnrichmentLoader {
   }
 
   async enrich({ limit = 0, dryRun = false }: EnrichOptions = {}): Promise<EnrichmentSummary> {
-    const summary: EnrichmentSummary = { scanned: 0, categoriesApplied: 0, dishesApplied: 0 };
+    const summary: EnrichmentSummary = {
+      scanned: 0,
+      categoriesApplied: 0,
+      dishesApplied: 0,
+      attributesApplied: 0,
+    };
 
     const logId = dryRun
       ? null
@@ -59,21 +64,33 @@ export class EnrichmentLoader {
           .query(
             `INSERT INTO enrichment_log (run_type, model, params)
              VALUES ($1, $2, $3) RETURNING id`,
-            ['category+dish', 'category:rules:v1;dish:lexicon:v1', { limit, dryRun }],
+            [
+              'category+dish+attribute',
+              'category:rules:v1;dish:lexicon:v1;attribute:rules:v1',
+              { limit, dryRun },
+            ],
           )
           .then((result) => result.rows[0].id as number);
 
     try {
       summary.categoriesApplied = await this.applyCategories(limit, summary, dryRun);
       summary.dishesApplied = await this.applyDishes(limit, summary, dryRun);
+      summary.attributesApplied = await this.applyAttributes(dryRun);
 
       if (logId !== null) {
         await this.pool.query(
           `UPDATE enrichment_log
              SET status = 'completed', finished_at = now(),
-                 restaurants_scanned = $2, categories_applied = $3, dishes_applied = $4
+                 restaurants_scanned = $2, categories_applied = $3, dishes_applied = $4,
+                 attributes_applied = $5
            WHERE id = $1`,
-          [logId, summary.scanned, summary.categoriesApplied, summary.dishesApplied],
+          [
+            logId,
+            summary.scanned,
+            summary.categoriesApplied,
+            summary.dishesApplied,
+            summary.attributesApplied,
+          ],
         );
       }
     } catch (error) {
@@ -122,7 +139,9 @@ export class EnrichmentLoader {
       const suggestion = classifyCategory(row.normalized_name || row.name);
       if (!suggestion || suggestion.confidence < CATEGORY_MIN_CONFIDENCE) continue;
       valueParams.push(row.id, suggestion.slug, CATEGORY_SOURCE, suggestion.confidence);
-      values.push(`($${valueIndex}::uuid, $${valueIndex + 1}, $${valueIndex + 2}, $${valueIndex + 3}::numeric)`);
+      values.push(
+        `($${valueIndex}::uuid, $${valueIndex + 1}, $${valueIndex + 2}, $${valueIndex + 3}::numeric)`,
+      );
       valueIndex += 4;
       applied += 1;
     }
@@ -224,5 +243,47 @@ export class EnrichmentLoader {
     }
 
     return applied;
+  }
+
+  // Links known dishes to their food attributes (khẩu vị, nguyên liệu, cách ăn,
+  // cảm giác) from the curated attribute classifier. Runs over every available
+  // dish, not just the ones inserted in this run, so previously enriched data is
+  // updated if the taxonomy grows. Idempotent via ON CONFLICT DO NOTHING.
+  private async applyAttributes(dryRun: boolean): Promise<number> {
+    const { rows } = await this.pool.query<{ id: string; normalized_name: string }>(
+      `SELECT id, normalized_name
+       FROM dish
+       WHERE status = 'available'
+         AND normalized_name IS NOT NULL
+         AND length(trim(normalized_name)) > 0`,
+    );
+
+    const values: string[] = [];
+    const valueParams: unknown[] = [];
+    let valueIndex = 1;
+    for (const row of rows) {
+      const suggestions = classifyAttributes(row.normalized_name);
+      for (const suggestion of suggestions) {
+        valueParams.push(row.id, suggestion.code, ATTRIBUTE_SOURCE, suggestion.confidence);
+        values.push(
+          `($${valueIndex}::uuid, $${valueIndex + 1}, $${valueIndex + 2}, $${valueIndex + 3}::numeric)`,
+        );
+        valueIndex += 4;
+      }
+    }
+
+    if (!dryRun && values.length > 0) {
+      await this.pool.query(
+        `INSERT INTO dish_attribute (dish_id, attribute_id, source, confidence)
+         SELECT v.dish_id, fa.id, v.source, v.confidence
+         FROM (VALUES ${values.join(', ')})
+              AS v(dish_id, attribute_code, source, confidence)
+         JOIN food_attribute fa ON fa.code = v.attribute_code AND fa.is_active = true
+         ON CONFLICT (dish_id, attribute_id) DO NOTHING`,
+        valueParams,
+      );
+    }
+
+    return values.length;
   }
 }
