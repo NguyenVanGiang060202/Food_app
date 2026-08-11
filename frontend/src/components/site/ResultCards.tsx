@@ -1,4 +1,4 @@
-import { MapPin, Star, Clock } from 'lucide-react';
+import { MapPin, Star, Clock, ArrowUpRight } from 'lucide-react';
 import type { Dish, Restaurant } from '@/lib/food-data';
 import { Link } from 'react-router-dom';
 import { SaveRestaurantButton } from './SaveRestaurantButton';
@@ -69,9 +69,9 @@ export function RestaurantResult({
         }}
         role={onSelect ? 'button' : undefined}
         tabIndex={onSelect ? 0 : undefined}
-        className={`relative flex h-full flex-col rounded-xl border border-border bg-card p-3 shadow-soft transition-colors hover:border-primary/50 active:scale-[0.99] ${onSelect ? 'cursor-pointer' : ''}`}
+        className={`group cursor-pointer overflow-hidden rounded-xl border bg-card shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-lift ${onSelect ? 'cursor-pointer' : ''}`}
       >
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] items-stretch gap-3">
+        <div className="flex gap-2.5 p-2.5">
           {selectOnly ? (
             <button
               type="button"
@@ -80,49 +80,68 @@ export function RestaurantResult({
                 event.stopPropagation();
                 onSelect?.();
               }}
-              className="block aspect-square w-full self-start overflow-hidden rounded-lg bg-muted text-left"
+              className="relative h-20 w-20 shrink-0 self-start overflow-hidden rounded-lg bg-muted text-left"
             >
               <SmartImage
                 src={r.image}
                 alt={r.image ? r.name : 'Chưa có ảnh'}
                 className="h-full w-full object-cover"
               />
+              {r.rating != null && r.rating > 0 && (
+                <span className="absolute bottom-1 left-1 rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-medium">
+                  <Star className="mr-0.5 inline h-2.5 w-2.5 fill-primary text-primary" />
+                  {r.rating}
+                </span>
+              )}
             </button>
           ) : (
             <Link
               to={`/restaurants/${r.id}`}
               onClick={(event) => event.stopPropagation()}
-              className="block aspect-square w-full self-start overflow-hidden rounded-lg bg-muted"
+              className="relative h-20 w-20 shrink-0 self-start overflow-hidden rounded-lg bg-muted"
             >
               <SmartImage
                 src={r.image}
                 alt={r.image ? r.name : 'Chưa có ảnh'}
                 className="h-full w-full object-cover"
               />
+              {r.rating != null && r.rating > 0 && (
+                <span className="absolute bottom-1 left-1 rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-medium">
+                  <Star className="mr-0.5 inline h-2.5 w-2.5 fill-primary text-primary" />
+                  {r.rating}
+                </span>
+              )}
             </Link>
           )}
-          <div className="min-w-0 py-0.5">
-            <div className="flex min-w-0 items-start gap-2">
-              {selectOnly ? (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSelect?.();
-                  }}
-                  className="min-w-0 flex-1 text-left font-display text-base leading-tight hover:text-primary"
-                >
-                  <span className="line-clamp-2">{r.name}</span>
-                </button>
-              ) : (
-                <Link
-                  to={`/restaurants/${r.id}`}
-                  onClick={(event) => event.stopPropagation()}
-                  className="min-w-0 flex-1 font-display text-base leading-tight hover:text-primary"
-                >
-                  <span className="line-clamp-2">{r.name}</span>
-                </Link>
-              )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                {r.cuisine.length > 0 && (
+                  <div className="truncate text-[9px] uppercase tracking-[.14em] text-muted-foreground">
+                    {r.cuisine.slice(0, 2).join(' · ')}
+                  </div>
+                )}
+                {selectOnly ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelect?.();
+                    }}
+                    className="mt-0.5 block max-w-full truncate text-left font-display text-base leading-tight hover:text-primary"
+                  >
+                    <span className="line-clamp-2">{r.name}</span>
+                  </button>
+                ) : (
+                  <Link
+                    to={`/restaurants/${r.id}`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="mt-0.5 block max-w-full font-display text-base leading-tight hover:text-primary"
+                  >
+                    <span className="line-clamp-2">{r.name}</span>
+                  </Link>
+                )}
+              </div>
               <div className="shrink-0">
                 <SaveRestaurantButton restaurantId={r.id} size="compact" />
               </div>
@@ -133,44 +152,39 @@ export function RestaurantResult({
                 {r.distanceKm != null ? `${r.distanceKm}km · ` : ''}
                 {r.area}
               </span>
-              {r.rating != null && r.rating > 0 && (
-                <span className="inline-flex shrink-0 items-center gap-0.5">
-                  <Star className="h-3 w-3 fill-mustard text-mustard" />
-                  {r.rating}
-                </span>
-              )}
-              {r.hours && (
-                <span className="inline-flex min-w-0 items-center gap-0.5 truncate">
-                  <Clock className="h-3 w-3 shrink-0" />
-                  {r.hours}
+              {matchedNames.length > 0 && (
+                <span className="inline-flex min-w-0 items-center gap-0.5 truncate text-primary/80">
+                  Có: {matchedNames.join(', ')}
                 </span>
               )}
             </div>
-            {matchedNames.length > 0 && (
-              <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
-                Có: {matchedNames.join(', ')}
-              </div>
-            )}
             {explanation && (
-              <div className="mt-1 line-clamp-3 text-[11px] leading-4 text-primary/80">
+              <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
                 {explanation}
               </div>
             )}
-            {selectOnly && (
-              <div className="mt-2 inline-flex w-fit items-center rounded-full bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary">
-                Nhấn để xem trên bản đồ
-              </div>
-            )}
+            <div className="mt-1.5 flex items-center gap-3">
+              <Link
+                to={`/restaurants/${r.id}`}
+                onClick={(event) => event.stopPropagation()}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+              >
+                Chi tiết <ArrowUpRight className="h-3 w-3" />
+              </Link>
+              {selectOnly && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect?.();
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
+                >
+                  Bản đồ
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="mt-3 border-t border-border/60 pt-3">
-          <Link
-            to={`/restaurants/${r.id}`}
-            onClick={(event) => event.stopPropagation()}
-            className="block w-full truncate rounded-full bg-foreground px-3 py-1.5 text-center text-xs font-medium text-background hover:opacity-90"
-          >
-            Xem chi tiết
-          </Link>
         </div>
       </article>
     );

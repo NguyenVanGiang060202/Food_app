@@ -33,6 +33,36 @@ export interface RawAiIntent {
 const firstStringOrNull = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() ? value.trim() : null;
 
+// Canonical district strings recognized by the location taxonomy. The database
+// currently stores "Quận 1".."Quận 12"; named HCMC districts are included so a
+// future data refresh (adding Bình Thạnh, Gò Vấp, …) works without code changes.
+export const HCMC_DISTRICT_NAMES = [
+  'Quận 1',
+  'Quận 2',
+  'Quận 3',
+  'Quận 4',
+  'Quận 5',
+  'Quận 6',
+  'Quận 7',
+  'Quận 8',
+  'Quận 9',
+  'Quận 10',
+  'Quận 11',
+  'Quận 12',
+  'Bình Thạnh',
+  'Gò Vấp',
+  'Phú Nhuận',
+  'Tân Bình',
+  'Tân Phú',
+  'Bình Tân',
+  'Thủ Đức',
+  'Hóc Môn',
+  'Củ Chi',
+  'Bình Chánh',
+  'Nhà Bè',
+  'Cần Giờ',
+] as const;
+
 const uniqueStrings = (value: unknown, options: { max: number; maxLength?: number }): string[] => {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -59,8 +89,12 @@ const validNumber = (value: unknown, min: number, max: number): number | null =>
 
 const normalizeDistrict = (value: string | null): string | null => {
   if (!value) return null;
-  const match = value.trim().match(/^(?:quận|district)\s*(\d{1,2})$/i);
-  return match ? `District ${match[1]}` : null;
+  const match = value.trim().match(/^(?:quận|district|q)\s*(\d{1,2})$/i);
+  if (match) return `Quận ${match[1]}`;
+  const found = HCMC_DISTRICT_NAMES.find(
+    (name) => name.toLocaleLowerCase('vi-VN') === value.trim().toLocaleLowerCase('vi-VN'),
+  );
+  return found ?? null;
 };
 
 const normalizeBoolean = (value: unknown): boolean | null =>

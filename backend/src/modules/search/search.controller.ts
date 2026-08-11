@@ -25,8 +25,13 @@ import type { RestaurantFilters } from '../restaurants/restaurants.types';
 
 interface InterpretedFilters {
   category?: string;
+  /** True when the category came from an explicit dish-type word (bún, cơm, phở…). */
+  categoryFromDishType?: boolean;
   district?: string;
   attributes: string[];
+  tastes: string[];
+  /** The query reduced to meaningful food terms only (filler/location/taste words removed). */
+  query?: string;
 }
 
 interface AuthenticatedRequest {
@@ -70,6 +75,13 @@ const CATEGORY_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['seafood', 'seafood'],
   ['tráng miệng', 'dessert'],
   ['dessert', 'dessert'],
+];
+
+// Category aliases are merged with dish-type aliases so a chat prompt like
+// "bún bò huế" resolves to the `bun` category filter, not just a text match.
+const ALL_CATEGORY_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ...DISH_TYPE_ALIASES,
+  ...CATEGORY_ALIASES,
 ];
 
 // Only these slugs are guaranteed by the reference taxonomy. Other aliases
@@ -128,11 +140,207 @@ const decodeRecommendationCursor = (cursor: string): RecommendationCursorPayload
   }
 };
 
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Removes a whole word/phrase (case-insensitive, Unicode word boundaries) so
+// "bình thạnh" is stripped as a unit instead of leaving "thạnh" behind.
+const removePhrase = (text: string, phrase: string): string =>
+  text.replace(
+    new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(phrase)}(?=$|[^\\p{L}\\p{N}])`, 'giu'),
+    ' ',
+  );
+
+const DISTRICT_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ['quận 12', 'Quận 12'],
+  ['district 12', 'Quận 12'],
+  ['quận 11', 'Quận 11'],
+  ['district 11', 'Quận 11'],
+  ['quận 10', 'Quận 10'],
+  ['district 10', 'Quận 10'],
+  ['quận 9', 'Quận 9'],
+  ['district 9', 'Quận 9'],
+  ['quận 8', 'Quận 8'],
+  ['district 8', 'Quận 8'],
+  ['quận 7', 'Quận 7'],
+  ['district 7', 'Quận 7'],
+  ['quận 6', 'Quận 6'],
+  ['district 6', 'Quận 6'],
+  ['quận 5', 'Quận 5'],
+  ['district 5', 'Quận 5'],
+  ['quận 4', 'Quận 4'],
+  ['district 4', 'Quận 4'],
+  ['quận 3', 'Quận 3'],
+  ['district 3', 'Quận 3'],
+  ['quận 2', 'Quận 2'],
+  ['district 2', 'Quận 2'],
+  ['quận 1', 'Quận 1'],
+  ['district 1', 'Quận 1'],
+  ['bình thạnh', 'Bình Thạnh'],
+  ['gò vấp', 'Gò Vấp'],
+  ['phú nhuận', 'Phú Nhuận'],
+  ['tân bình', 'Tân Bình'],
+  ['tân phú', 'Tân Phú'],
+  ['bình tân', 'Bình Tân'],
+  ['thủ đức', 'Thủ Đức'],
+  ['hóc môn', 'Hóc Môn'],
+  ['củ chi', 'Củ Chi'],
+  ['bình chánh', 'Bình Chánh'],
+  ['nhà bè', 'Nhà Bè'],
+  ['cần giờ', 'Cần Giờ'],
+];
+
+const TASTE_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ['ngọt', 'ngọt'],
+  ['cay', 'cay'],
+  ['mặn', 'mặn'],
+  ['chua', 'chua'],
+  ['béo', 'béo'],
+  ['nóng', 'nóng'],
+  ['mát', 'mát'],
+  ['lạnh', 'mát'],
+  ['giòn', 'giòn'],
+  ['hấp', 'hấp'],
+  ['nướng', 'nướng'],
+  ['chiên', 'chiên'],
+  ['thanh đạm', 'thanh đạm'],
+  ['nhẹ bụng', 'nhẹ bụng'],
+  ['nhẹ', 'nhẹ bụng'],
+  ['no lâu', 'no lâu'],
+  ['đầy bữa', 'đầy bữa'],
+  ['đậm đà', 'đậm đà'],
+  ['tươi', 'tươi'],
+];
+
+const FILLER_WORDS: readonly string[] = [
+  'tìm',
+  'cho',
+  'tôi',
+  'mình',
+  'muốn',
+  'cần',
+  'xin',
+  'giúp',
+  'gì',
+  'đó',
+  'nào',
+  'một',
+  'món',
+  'quán',
+  'quầy',
+  'ngon',
+  'nhất',
+  'ạ',
+  'nha',
+  'nè',
+  'nhé',
+  'ơi',
+  'đừng',
+  'hay',
+  'và',
+  'có',
+  'của',
+  'tại',
+  'ra',
+  'để',
+  'đi',
+  'bữa',
+  'gần',
+  'đây',
+  'khu',
+  'vực',
+  'ở',
+  'ngay',
+  'cạnh',
+  'buổi',
+  'sáng',
+  'trưa',
+  'chiều',
+  'tối',
+  'nay',
+  'lúc',
+  'giờ',
+  'thêm',
+  'nữa',
+  'được',
+  'không',
+  'chỗ',
+  'nơi',
+  'xem',
+  'ăn',
+  'uống',
+  'đồ',
+  'vặt',
+  'giá',
+  'rẻ',
+  'đắt',
+  'xịn',
+  'sang',
+  'tiền',
+];
+
+const FILLER_PHRASES: readonly string[] = [
+  'gần đây',
+  'cho tôi',
+  'cho mình',
+  'món gì',
+  'gì đó',
+  'một món',
+  'quán gì',
+  'ở đâu',
+  'gần nhà',
+  'bình dân',
+  'giá rẻ',
+  'cao cấp',
+];
+
+// Subjective quality/filler words an LLM may wrongly put into `tastes`. They
+// are not food attributes — keeping them turns into AND'd dish-name filters
+// that silently match nothing (e.g. tastes ["ngon", "phở"] requires a dish
+// whose name contains BOTH words).
+const NON_TASTE_WORDS = new Set([
+  'ngon',
+  'ngon nhất',
+  'ngon bổ rẻ',
+  'sạch',
+  'sạch sẽ',
+  'chất lượng',
+  'uy tín',
+  'bổ',
+  'đẹp',
+  'gần',
+  'tiện',
+  'mát mẻ',
+  'thân thiện',
+  'chuẩn',
+  'đúng chuẩn',
+  'chuẩn vị',
+  'nổi tiếng',
+  'nức tiếng',
+  'xịn',
+  'sang',
+  'quen',
+  'đông',
+  'vắng',
+  'lạ',
+  'độc lạ',
+  'mới',
+  'tươi ngon',
+  'ngon miệng',
+  'hợp',
+  'đầy đủ',
+  'review',
+  'ngon tuyệt',
+  'tuyệt',
+  'ok',
+  'đãi',
+  'tiết kiệm',
+]);
+const cleanTasteTerms = (terms: string[]): string[] =>
+  terms.filter((term) => !NON_TASTE_WORDS.has(term.toLocaleLowerCase('vi-VN')));
+
 function interpretQuery(query: string): InterpretedFilters {
   const normalized = query.toLocaleLowerCase('vi-VN');
-  const category = CATEGORY_ALIASES.find(([alias]) => normalized.includes(alias))?.[1];
-  const districtMatch = normalized.match(/\b(?:district|quận)\s*(\d{1,2})\b/i);
-  const district = districtMatch ? `District ${districtMatch[1]}` : undefined;
+  const dishTypeCategory = DISH_TYPE_ALIASES.find(([alias]) => normalized.includes(alias))?.[1];
+  const category = dishTypeCategory ?? CATEGORY_ALIASES.find(([alias]) => normalized.includes(alias))?.[1];
   const attributes = [
     ...(normalized.includes('quiet') || normalized.includes('yên tĩnh') ? ['quiet'] : []),
     ...(normalized.includes('date') || normalized.includes('hẹn hò') ? ['date-friendly'] : []),
@@ -143,13 +351,54 @@ function interpretQuery(query: string): InterpretedFilters {
       : []),
   ];
 
-  return { ...(category ? { category } : {}), ...(district ? { district } : {}), attributes };
+  // Distill the raw sentence down to the meaningful food terms. Location and
+  // taste words become structured filters instead of SQL text matches, so
+  // "ngọt" no longer accidentally matches restaurants whose menu contains
+  // "binh"/"thanh"/"do" from the surrounding filler words.
+  let refined = query.trim();
+  let district: string | undefined;
+  for (const [alias, canonical] of [...DISTRICT_ALIASES].sort(
+    (left, right) => right[0].length - left[0].length,
+  )) {
+    const next = removePhrase(refined, alias);
+    if (next !== refined) {
+      district = canonical;
+      refined = next;
+      break;
+    }
+  }
+  const tastes: string[] = [];
+  for (const [alias, canonical] of TASTE_ALIASES) {
+    const next = removePhrase(refined, alias);
+    if (next !== refined) {
+      tastes.push(canonical);
+      refined = next;
+    }
+  }
+  for (const phrase of FILLER_PHRASES) refined = removePhrase(refined, phrase);
+  for (const word of FILLER_WORDS) refined = removePhrase(refined, word);
+
+  const queryTerm = refined.replace(/\s+/g, ' ').trim();
+  return {
+    ...(category ? { category } : {}),
+    ...(category ? { categoryFromDishType: Boolean(dishTypeCategory) } : {}),
+    ...(district ? { district } : {}),
+    attributes,
+    tastes,
+    ...(queryTerm ? { query: queryTerm } : {}),
+  };
 }
 
 function firstFilterableCategory(
   intent: AiIntent | null,
   interpreted: InterpretedFilters,
 ): string | undefined {
+  // An explicit dish-type word in the query (bún, cơm, mì, phở, ăn vặt…) is an
+  // exact, reliable category signal. Prefer it over the LLM's broader guess so
+  // "bún bò huế" matches `bun` restaurants instead of the LLM's "noodle".
+  if (interpreted.categoryFromDishType && FILTERABLE_CATEGORY_SLUGS.has(interpreted.category!)) {
+    return interpreted.category;
+  }
   if (intent && intent.categories.length) {
     const fromIntent = intent.categories.find((slug) => FILTERABLE_CATEGORY_SLUGS.has(slug));
     if (fromIntent) return fromIntent;
@@ -205,6 +454,13 @@ export class SearchController {
           ? { district: interpreted.district }
           : {}),
       attributes: interpreted.attributes,
+      tastes: [
+        ...new Set([
+          ...interpreted.tastes,
+          ...cleanTasteTerms(intent?.tastes ?? []),
+          ...cleanTasteTerms(intent?.dishes ?? []),
+        ]),
+      ],
       ...(intent?.priceLevel ? { priceLevel: intent.priceLevel } : {}),
       ...(intent?.minRating ? { minRating: intent.minRating } : {}),
       ...(intent?.openNow === null || intent === null ? {} : { openNow: intent?.openNow }),
@@ -240,12 +496,15 @@ export class RecommendationsController {
     const radiusMeters =
       body.filters?.radiusMeters ?? (intent?.distanceKm ? intent.distanceKm * 1000 : undefined);
     const tastes = [
-      ...(body.filters?.taste ?? []),
-      ...(intent?.tastes ?? []),
-      ...(intent?.dishes ?? []),
+      ...new Set([
+        ...(body.filters?.taste ?? []),
+        ...(interpreted.tastes ?? []),
+        ...cleanTasteTerms(intent?.tastes ?? []),
+        ...cleanTasteTerms(intent?.dishes ?? []),
+      ]),
     ];
     const filters = {
-      query: body.query,
+      query: interpreted.query ?? body.query,
       category,
       latitude: body.location?.latitude,
       longitude: body.location?.longitude,
@@ -265,18 +524,45 @@ export class RecommendationsController {
     };
     // Track the exact filters that produced the returned page so a follow-up
     // (cursor) request can replay the same query without re-running the LLM.
+    // Filters the user explicitly picked in the UI are intent and are kept
+    // through every fallback; filters the LLM/interpretation inferred (area,
+    // price level, rating, open-now) are "nice to have" and are dropped one by
+    // one when the current dataset cannot satisfy them (e.g. the DB has almost
+    // no price_level values, and Bình Thạnh has not been crawled yet).
+    const explicit = {
+      district: body.filters?.area !== undefined,
+      priceLevel: body.filters?.priceLevel !== undefined,
+      minRating: body.filters?.minRating !== undefined,
+      openNow: body.filters?.openNow !== undefined,
+    };
     let effective: RestaurantFilters = filters;
     let page = await this.restaurantsService.list(effective);
-    if (!page.data.length && filters.query && (filters.category || filters.dishTypes?.length)) {
+    if (!page.data.length && effective.district && !explicit.district) {
+      effective = { ...effective, district: undefined };
+      page = await this.restaurantsService.list(effective);
+    }
+    if (!page.data.length && effective.priceLevel !== undefined && !explicit.priceLevel) {
+      effective = { ...effective, priceLevel: undefined };
+      page = await this.restaurantsService.list(effective);
+    }
+    if (!page.data.length && effective.minRating !== undefined && !explicit.minRating) {
+      effective = { ...effective, minRating: undefined };
+      page = await this.restaurantsService.list(effective);
+    }
+    if (!page.data.length && effective.openNow && !explicit.openNow) {
+      effective = { ...effective, openNow: undefined };
+      page = await this.restaurantsService.list(effective);
+    }
+    if (!page.data.length && effective.query && (effective.category || effective.dishTypes?.length)) {
       // The category/dish-type taxonomy can be incomplete for a restaurant
       // that clearly serves something (e.g. mì without the `noodle` link).
       // Retry keeping the query text and the explicit taste filters, which
       // now resolve through dish attributes (food_attribute / dish_attribute).
-      effective = { ...filters, category: undefined, dishTypes: undefined };
+      effective = { ...effective, category: undefined, dishTypes: undefined };
       page = await this.restaurantsService.list(effective);
     }
-    if (!page.data.length && filters.query) {
-      effective = { ...filters, query: undefined };
+    if (!page.data.length && effective.query) {
+      effective = { ...effective, query: undefined };
       page = await this.restaurantsService.list(effective);
     }
     if (!page.data.length) {
@@ -285,7 +571,7 @@ export class RecommendationsController {
       // Drop only the free-text query and rank the remaining candidates by
       // rating. Never silently drop the filters and return unrelated
       // top-rated restaurants (e.g. Cơm tấm for a "món ngọt nóng" filter).
-      effective = { ...filters, query: undefined, sort: RestaurantSort.Rating };
+      effective = { ...effective, query: undefined, sort: RestaurantSort.Rating };
       page = await this.restaurantsService.list(effective);
     }
     const snapshot: Omit<RestaurantFilters, 'limit'> = { ...effective };
@@ -297,12 +583,12 @@ export class RecommendationsController {
         explanation: this.explain(
           restaurant.categories.map((c) => c.slug),
           {
-            category,
-            district,
-            priceLevel,
-            openNow,
-            tastes,
-            location: body.location ? true : undefined,
+            category: effective.category,
+            district: effective.district,
+            priceLevel: effective.priceLevel,
+            openNow: effective.openNow,
+            tastes: effective.tastes,
+            location: effective.latitude !== undefined ? true : undefined,
           },
         ),
       })),

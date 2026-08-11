@@ -523,7 +523,7 @@ export function MapPage() {
               onDragEnd={(_event, info) => {
                 if (info.offset.y > 80 || info.velocity.y > 300) setMobileListOpen(false);
               }}
-              className="flex h-[34svh] cursor-grab flex-col overflow-hidden rounded-t-[24px] border-x border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_60px_-20px_rgba(47,42,37,0.4)] active:cursor-grabbing"
+              className="flex h-[48svh] cursor-grab flex-col overflow-hidden rounded-t-[24px] border-x border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_60px_-20px_rgba(47,42,37,0.4)] active:cursor-grabbing"
             >
               <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
                 <div className="h-[3px] w-12 rounded-full bg-border" />

@@ -1,4 +1,4 @@
-# NoN? ? AI Food Recommendation Platform
+# Hỏi Bếp ? AI Food Recommendation Platform
 
 > Intelligent food and restaurant recommendation platform powered by AI, Vector Search, and Multi-Source Data Collection.
 

@@ -89,7 +89,7 @@ function buildIntentSystemPrompt(allowedSlugs: ReadonlySet<string>): string {
     `["${slugs}"]`,
     '2. dishes là tên món người dùng nhắc tới (ví dụ "phở bò", "bún riêu"), viết nguyên văn, không bịa.',
     '3. tastes là tính từ ngắn về cảm/khẩu vị/cách ăn (ví dụ nóng, cay, ngọt, mặn, nhẹ, nướng, chân mát).',
-    '4. district dạng "Quận N" (1-12), nếu không có để null.',
+    '4. district dạng "Quận N" (1-12) HOẶC tên quận như "Bình Thạnh", "Gò Vấp", "Phú Nhuận", "Tân Bình", "Tân Phú", "Thủ Đức", "Bình Tân", "Hóc Môn", "Nhà Bè". Viết đúng tên (có dấu), không thêm chữ "Quận" vào tên quận. Nếu không có để null.',
     '5. priceLevel: 1 (bình dân) đến 4 (cao cấp), mặc định null nếu không xác định được.',
     '6. minRating: số thực từ 3.0 đến 5.0, nếu không có để null.',
     '7. openNow: true chỉ khi người dùng nói rõ đang mở/giờ này/mở cửa, còn lại null.',

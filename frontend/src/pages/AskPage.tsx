@@ -26,6 +26,7 @@ import {
   toRestaurant,
   type BackendDish,
   type InterpretedSearch,
+  type RecommendationFilters,
   type RecommendationItem,
 } from '@/lib/api';
 import { Stagger, StaggerItem } from '@/lib/motion';
@@ -37,13 +38,44 @@ type Filters = {
   minRating?: number;
   priceLevel?: number;
 };
+type RecommendationPayload = {
+  query: string;
+  limit: number;
+  location?: { latitude: number; longitude: number };
+  filters?: RecommendationFilters;
+  cursor?: string;
+};
 type SearchContext = {
   keyword: string;
   filters: Filters;
   sort: 'distance' | 'rating' | 'relevance';
 };
+type LocateError = { code: 'denied' | 'unavailable' | 'timeout' | 'unsupported' };
 type AskTurn =
   { kind: 'message'; query: string; answer: string } | { kind: 'filter'; label: string };
+
+const ASK_WORKSPACE_KEY = 'bep:ask-workspace';
+
+type SavedWorkspace = {
+  query: string;
+  searchContext: SearchContext;
+  result: RecommendationItem[];
+  trending: RecommendationItem[];
+  dishCatalog: BackendDish[];
+  interpreted: InterpretedSearch | null;
+  location: { latitude: number; longitude: number } | null;
+  nextCursor: string | null;
+  active: string | null;
+};
+
+function loadWorkspace(): SavedWorkspace | null {
+  try {
+    const raw = sessionStorage.getItem(ASK_WORKSPACE_KEY);
+    return raw ? (JSON.parse(raw) as SavedWorkspace) : null;
+  } catch {
+    return null;
+  }
+}
 
 function summarizeFilters(filters: Filters): string {
   const parts = [
@@ -55,6 +87,8 @@ function summarizeFilters(filters: Filters): string {
   ];
   return parts.length ? parts.join(' · ') : '';
 }
+
+const MAX_MAP_MARKERS = 150;
 
 function sameFilters(left: Filters, right: Filters): boolean {
   const sortA = (values: string[]) => [...values].sort().join('|');
@@ -82,19 +116,22 @@ const quickFilters = [
 
 export function AskPage() {
   const routeLocation = useLocation();
-  const [query, setQuery] = useState('');
-  const [searchContext, setSearchContext] = useState<SearchContext>({
-    keyword: '',
-    filters: { attrs: [], openNow: false },
-    sort: 'relevance',
-  });
+  const restoredRef = useRef<SavedWorkspace | null | undefined>(undefined);
+  if (restoredRef.current === undefined) restoredRef.current = loadWorkspace();
+  const restored = restoredRef.current;
+  const [query, setQuery] = useState(restored?.query ?? '');
+  const [searchContext, setSearchContext] = useState<SearchContext>(
+    restored?.searchContext ?? { keyword: '', filters: { attrs: [], openNow: false }, sort: 'relevance' },
+  );
   const [showFilters, setShowFilters] = useState(false);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<RecommendationItem[]>([]);
-  const [dishCatalog, setDishCatalog] = useState<BackendDish[]>([]);
-  const [interpreted, setInterpreted] = useState<InterpretedSearch | null>(null);
+  const [result, setResult] = useState<RecommendationItem[]>(restored?.result ?? []);
+  const [dishCatalog, setDishCatalog] = useState<BackendDish[]>(restored?.dishCatalog ?? []);
+  const [interpreted, setInterpreted] = useState<InterpretedSearch | null>(
+    restored?.interpreted ?? null,
+  );
   const [turns, setTurns] = useState<AskTurn[]>(() => {
     try {
       return JSON.parse(sessionStorage.getItem('bep:ask-session') ?? '[]') as AskTurn[];
@@ -103,12 +140,19 @@ export function AskPage() {
     }
   });
   const [pendingQuery, setPendingQuery] = useState<string | null>(null);
-  const [active, setActive] = useState<string | null>(null);
-  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [active, setActive] = useState<string | null>(restored?.active ?? null);
+  const [nextCursor, setNextCursor] = useState<string | null>(restored?.nextCursor ?? null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [trending, setTrending] = useState<RecommendationItem[]>(restored?.trending ?? []);
+  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(
+    restored?.location ?? null,
+  );
   const [locationBusy, setLocationBusy] = useState(false);
+  const [locationError, setLocationError] = useState<LocateError | null>(null);
   const [locateTrigger, setLocateTrigger] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const requestRef = useRef<AbortController | null>(null);
+  const activePayloadRef = useRef<RecommendationPayload | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const filters = searchContext.filters;
   const submitted = turns.length > 0 || busy || result.length > 0;
@@ -121,6 +165,10 @@ export function AskPage() {
   const resultRestaurants = useMemo(
     () => result.map((item) => toRestaurant(item.restaurant)),
     [result],
+  );
+  const trendingRestaurants = useMemo(
+    () => trending.map((item) => toRestaurant(item.restaurant)),
+    [trending],
   );
   const resultDishes = useMemo(() => dishCatalog.slice(0, 6).map(toAskDish), [dishCatalog]);
   const matchingDishNames = useMemo(
@@ -139,6 +187,45 @@ export function AskPage() {
   useEffect(() => {
     sessionStorage.setItem('bep:ask-session', JSON.stringify(turns));
   }, [turns]);
+  useEffect(() => {
+    if (!restored?.searchContext.keyword) return;
+    const f = restored.searchContext.filters;
+    const reqLoc = restored.location ?? null;
+    activePayloadRef.current = {
+      query: restored.searchContext.keyword,
+      limit: 50,
+      location: reqLoc ?? undefined,
+      filters: {
+        taste: f.attrs.length ? f.attrs : undefined,
+        openNow: f.openNow || undefined,
+        minRating: f.minRating,
+        priceLevel: f.priceLevel,
+        sort: restored.searchContext.sort,
+        ...(reqLoc && (f.maxDistanceKm ?? 5)
+          ? { radiusMeters: (f.maxDistanceKm ?? 5) * 1000 }
+          : {}),
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const next: SavedWorkspace = {
+      query,
+      searchContext,
+      result,
+      trending,
+      dishCatalog,
+      interpreted,
+      location,
+      nextCursor,
+      active,
+    };
+    if (result.length === 0 && !searchContext.keyword) {
+      sessionStorage.removeItem(ASK_WORKSPACE_KEY);
+      return;
+    }
+    sessionStorage.setItem(ASK_WORKSPACE_KEY, JSON.stringify(next));
+  }, [query, searchContext, result, trending, dishCatalog, interpreted, location, nextCursor, active]);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -160,9 +247,32 @@ export function AskPage() {
     [],
   );
 
-  const locate = () => {
-    if (!navigator.geolocation) return Promise.resolve(null);
+  const locate = async () => {
+    if (!navigator.geolocation) {
+      setLocationError({ code: 'unsupported' });
+      return null;
+    }
+    // Browsers remember a denied location permission and will NOT show the
+    // prompt again on this site, so clicking the button would just silently
+    // fail. Check the stored permission first and guide the user instead of
+    // spinning forever. Re-checking on every click means it works the moment
+    // they re-enable it in the browser's site settings.
+    if ('permissions' in navigator) {
+      try {
+        const status = await navigator.permissions.query({
+          name: 'geolocation' as PermissionName,
+        });
+        if (status.state === 'denied') {
+          setLocationError({ code: 'denied' });
+          return null;
+        }
+      } catch {
+        // Permissions API not supported (e.g. some Firefox versions) — fall
+        // through and let getCurrentPosition report the actual result.
+      }
+    }
     setLocationBusy(true);
+    setLocationError(null);
     setLocateTrigger((t) => t + 1); // Force map recenter
     return new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
       navigator.geolocation.getCurrentPosition(
@@ -170,13 +280,21 @@ export function AskPage() {
           const next = { latitude: position.coords.latitude, longitude: position.coords.longitude };
           setLocation(next);
           setLocationBusy(false);
+          setLocationError(null);
           resolve(next);
         },
-        () => {
+        (error) => {
           setLocationBusy(false);
+          setLocationError(
+            error.code === error.PERMISSION_DENIED
+              ? { code: 'denied' }
+              : error.code === error.TIMEOUT
+                ? { code: 'timeout' }
+                : { code: 'unavailable' },
+          );
           resolve(null);
         },
-        { enableHighAccuracy: true, timeout: 10000 },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
       );
     });
   };
@@ -195,15 +313,18 @@ export function AskPage() {
     keyword: string,
     nextFilters = filters,
     locationOverride?: { latitude: number; longitude: number } | null,
-  ) => {
+  ): Promise<number> => {
     const trimmed = keyword.trim();
-    if (!trimmed) return;
+    if (!trimmed) return 0;
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
     setBusy(true);
     setPendingQuery(trimmed);
     setInterpreted(null);
+    setNextCursor(null);
+    setTrending([]);
+    setLoadingMore(false);
     try {
       const requestLocation =
         locationOverride !== undefined
@@ -212,29 +333,48 @@ export function AskPage() {
             ? await locate()
             : location;
       const effectiveRadiusKm = nextFilters.maxDistanceKm ?? (requestLocation ? 5 : undefined);
-      const recommendations = await getRecommendations(
-        {
-          query: trimmed,
-          limit: 20,
-          location: requestLocation ?? undefined,
-          filters: {
-            taste: nextFilters.attrs.length ? nextFilters.attrs : undefined,
-            openNow: nextFilters.openNow || undefined,
-            minRating: nextFilters.minRating,
-            priceLevel: nextFilters.priceLevel,
-            sort: searchContext.sort,
-            ...(requestLocation && effectiveRadiusKm
-              ? { radiusMeters: effectiveRadiusKm * 1000 }
-              : {}),
-          },
+      const payload: RecommendationPayload = {
+        query: trimmed,
+        limit: 50,
+        location: requestLocation ?? undefined,
+        filters: {
+          taste: nextFilters.attrs.length ? nextFilters.attrs : undefined,
+          openNow: nextFilters.openNow || undefined,
+          minRating: nextFilters.minRating,
+          priceLevel: nextFilters.priceLevel,
+          sort: searchContext.sort,
+          ...(requestLocation && effectiveRadiusKm
+            ? { radiusMeters: effectiveRadiusKm * 1000 }
+            : {}),
         },
-        controller.signal,
+      };
+      // Trending matches the same request but deliberately ignores distance:
+      // no location, no radius, ranked by rating.
+      const trendingPayload: RecommendationPayload = {
+        query: trimmed,
+        limit: 12,
+        filters: {
+          taste: nextFilters.attrs.length ? nextFilters.attrs : undefined,
+          openNow: nextFilters.openNow || undefined,
+          minRating: nextFilters.minRating,
+          priceLevel: nextFilters.priceLevel,
+          sort: 'rating',
+        },
+      };
+      const trendingPromise = getRecommendations(trendingPayload, controller.signal).catch(
+        () => ({ items: [] as RecommendationItem[], nextCursor: null as string | null }),
       );
+      const page = await getRecommendations(payload, controller.signal);
+      const trendingPage = await trendingPromise;
       const dishes = await listDishes(12, trimmed, {
         openNow: nextFilters.openNow || undefined,
       }).catch(() => []);
       const interpretation = await interpretSearch(trimmed, controller.signal).catch(() => null);
-      setResult(recommendations);
+      activePayloadRef.current = payload;
+      const foundCount = page.items.length;
+      setResult(page.items);
+      setNextCursor(page.nextCursor);
+      setTrending(trendingPage.items);
       setDishCatalog(dishes);
       setInterpreted(interpretation);
       setSearchContext((current) => ({ ...current, keyword: trimmed, filters: nextFilters }));
@@ -243,11 +383,12 @@ export function AskPage() {
         {
           kind: 'message',
           query: trimmed,
-          answer: recommendations.length
-            ? `Bếp tìm được ${recommendations.length} quán hợp cơn thèm này.`
+          answer: page.items.length
+            ? `Bếp tìm được ${page.items.length} quán hợp cơn thèm này.`
             : 'Bếp chưa thấy quán hợp gu. Nới bộ lọc một chút nhé?',
         },
       ]);
+      return foundCount;
     } catch (cause) {
       if (!controller.signal.aborted)
         setTurns((current) => [
@@ -258,6 +399,7 @@ export function AskPage() {
             answer: cause instanceof Error ? cause.message : 'Bếp bị khét một nhịp. Thử lại nhé.',
           },
         ]);
+      return 0;
     } finally {
       if (requestRef.current === controller) {
         setBusy(false);
@@ -266,17 +408,42 @@ export function AskPage() {
     }
   };
 
+  const loadMore = async () => {
+    const base = activePayloadRef.current;
+    if (!base || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    const cursor = nextCursor;
+    try {
+      const { items, nextCursor: next } = await getRecommendations({ ...base, cursor });
+      setResult((current) => {
+        const seen = new Set(current.map((item) => item.restaurant.id));
+        const fresh = items.filter((item) => !seen.has(item.restaurant.id));
+        return [...current, ...fresh];
+      });
+      setNextCursor(next);
+    } catch {
+      // Keep the current results; the button can be retried.
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const incomingPrompt = new URLSearchParams(routeLocation.search).get('prompt')?.trim() ?? '';
   useEffect(() => {
     if (!incomingPrompt) return;
-    void runSearch(incomingPrompt);
+    void (async () => {
+      const found = await runSearch(incomingPrompt);
+      if (found > 0) setMobileListOpen(true);
+    })();
   }, [incomingPrompt]);
 
   const send = async (value = query) => {
     const trimmed = value.trim();
     if (!trimmed) return;
     setQuery('');
-    await runSearch(trimmed, filters);
+    setMobileChatOpen(false);
+    const found = await runSearch(trimmed, filters);
+    if (found > 0) setMobileListOpen(true);
   };
   const refineSearch = (nextFilters: Filters) => {
     setSearchContext((current) => ({ ...current, filters: nextFilters }));
@@ -289,13 +456,18 @@ export function AskPage() {
     requestRef.current?.abort();
     setQuery('');
     setResult([]);
+    setNextCursor(null);
+    setLoadingMore(false);
+    setTrending([]);
     setDishCatalog([]);
     setInterpreted(null);
     setTurns([]);
     setPendingQuery(null);
     setActive(null);
+    setLocationError(null);
     setSearchContext({ keyword: '', filters: { attrs: [], openNow: false }, sort: 'relevance' });
     sessionStorage.removeItem('bep:ask-session');
+    sessionStorage.removeItem(ASK_WORKSPACE_KEY);
     textareaRef.current?.focus();
   };
   const toggleAttr = (attr: string) =>
@@ -444,6 +616,7 @@ export function AskPage() {
             </button>
           )}
         </div>
+        {locationError && <LocationErrorBanner error={locationError} onDismiss={() => setLocationError(null)} />}
         <div className="rounded-2xl border border-border bg-card p-3 shadow-lift">
           <textarea
             ref={textareaRef}
@@ -507,6 +680,53 @@ export function AskPage() {
           </p>
         </div>
       )}
+      {nextCursor ? (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card px-4 py-3 text-sm text-foreground/80 transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-60"
+          >
+            {loadingMore ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/40 border-t-current" />
+                Đang tải thêm...
+              </>
+            ) : (
+              <>Tải thêm quán ({resultRestaurants.length} đã hiển thị)</>
+            )}
+          </button>
+        </div>
+      ) : resultRestaurants.length >= 50 ? (
+        <div className="mt-3 text-center text-[11px] text-muted-foreground">
+          Đã hiển thị toàn bộ {resultRestaurants.length} quán phù hợp.
+        </div>
+      ) : null}
+      {trendingRestaurants.length > 0 && (
+        <>
+          <div className="mb-2 mt-5 text-[11px] uppercase tracking-widest text-muted-foreground">
+            Nổi bật · hợp yêu cầu, không giới hạn khoảng cách
+          </div>
+          <Stagger className="space-y-2">
+            {trendingRestaurants.map((restaurant, index) => (
+              <StaggerItem
+                key={`trending-${restaurant.id}`}
+                onMouseEnter={() => setActive(restaurant.id)}
+              >
+                <RestaurantResult
+                  id={restaurant.id}
+                  restaurant={restaurant}
+                  explanation={trending[index]?.explanation}
+                  matchingNames={matchingDishNames.get(restaurant.id)}
+                  onSelect={() => setActive(restaurant.id)}
+                  compact
+                />
+              </StaggerItem>
+            ))}
+          </Stagger>
+        </>
+      )}
       <div className="mb-2 mt-5 text-[11px] uppercase tracking-widest text-muted-foreground">
         Món hợp gu
       </div>
@@ -519,9 +739,13 @@ export function AskPage() {
       </Stagger>
     </div>
   );
+  const mapRestaurants = useMemo(
+    () => resultRestaurants.slice(0, MAX_MAP_MARKERS),
+    [resultRestaurants],
+  );
   const mapCanvas = (
     <MapCanvas
-      restaurants={resultRestaurants}
+      restaurants={mapRestaurants}
       activeId={active}
       onHover={setActive}
       userLocation={location ? [location.latitude, location.longitude] : null}
@@ -567,52 +791,57 @@ export function AskPage() {
         </div>
         {!mobileChatOpen && !mobileListOpen && (
           <>
-            <div className="fixed inset-x-3 bottom-24 z-[1200] flex items-center gap-2 lg:hidden">
-              <button
-                type="button"
-                onClick={() => void locateAndRefresh()}
-                disabled={locationBusy}
-                aria-label={location ? 'Vị trí đã bật' : 'Bật vị trí'}
-                title={location ? 'Đã bật vị trí' : 'Bật vị trí'}
-                className={`grid h-12 w-12 shrink-0 place-items-center rounded-full shadow-lift transition-transform active:scale-95 ${location ? 'bg-primary text-white ring-2 ring-primary/20' : 'border border-border bg-card text-foreground'}`}
-              >
-                {locationBusy ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/40 border-t-current" />
-                ) : (
-                  <LocateFixed className="h-5 w-5" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileListOpen(true)}
-                className="relative inline-flex shrink-0 items-center gap-2 rounded-full bg-primary px-4 py-[13px] text-sm font-medium text-white shadow-lift active:scale-[0.97]"
-              >
-                <ListFilter className="h-4 w-4" />
-                Danh sách
-                {resultRestaurants.length > 0 && (
-                  <span className="absolute -right-1.5 -top-1.5 grid min-w-4 place-items-center rounded-full bg-foreground px-1 py-px text-[10px] font-bold leading-4 text-background ring-2 ring-background">
-                    {resultRestaurants.length}
+            <div className="fixed inset-x-3 bottom-24 z-[1200] flex flex-col gap-2 lg:hidden">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void locateAndRefresh()}
+                  disabled={locationBusy}
+                  aria-label={location ? 'Vị trí đã bật' : 'Bật vị trí'}
+                  title={location ? 'Đã bật vị trí' : 'Bật vị trí'}
+                  className={`grid h-12 w-12 shrink-0 place-items-center rounded-full shadow-lift transition-transform active:scale-95 ${location ? 'bg-primary text-white ring-2 ring-primary/20' : 'border border-border bg-card text-foreground'}`}
+                >
+                  {locationBusy ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/40 border-t-current" />
+                  ) : (
+                    <LocateFixed className="h-5 w-5" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileListOpen(true)}
+                  className="relative inline-flex shrink-0 items-center gap-2 rounded-full bg-primary px-4 py-[13px] text-sm font-medium text-white shadow-lift active:scale-[0.97]"
+                >
+                  <ListFilter className="h-4 w-4" />
+                  Danh sách
+                  {resultRestaurants.length > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 grid min-w-4 place-items-center rounded-full bg-foreground px-1 py-px text-[10px] font-bold leading-4 text-background ring-2 ring-background">
+                      {resultRestaurants.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileChatOpen(true)}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 rounded-2xl border border-border bg-card/95 p-2.5 pr-3 text-left shadow-lift backdrop-blur active:scale-[0.99]"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                    <MessageCircle className="h-4 w-4" />
                   </span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileChatOpen(true)}
-                className="flex min-w-0 flex-1 items-center gap-2.5 rounded-2xl border border-border bg-card/95 p-2.5 pr-3 text-left shadow-lift backdrop-blur active:scale-[0.99]"
-              >
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                  <MessageCircle className="h-4 w-4" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {busy ? 'Bếp đang nấu...' : 'Bếp vừa trả lời'}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {busy ? 'Bếp đang nấu...' : 'Bếp vừa trả lời'}
+                    </span>
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {latestAnswer}
+                    </span>
                   </span>
-                  <span className="block truncate text-sm font-medium text-foreground">
-                    {latestAnswer}
-                  </span>
-                </span>
-                <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
-              </button>
+                  <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              </div>
+              {locationError && (
+                <LocationErrorBanner error={locationError} onDismiss={() => setLocationError(null)} />
+              )}
             </div>
           </>
         )}
@@ -634,7 +863,7 @@ export function AskPage() {
               onDragEnd={(_event, info) => {
                 if (info.offset.y > 80 || info.velocity.y > 300) setMobileListOpen(false);
               }}
-              className="flex h-[34svh] cursor-grab flex-col overflow-hidden rounded-t-[24px] border-x border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_60px_-20px_rgba(47,42,37,0.4)] active:cursor-grabbing"
+              className="flex h-[48svh] cursor-grab flex-col overflow-hidden rounded-t-[24px] border-x border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_60px_-20px_rgba(47,42,37,0.4)] active:cursor-grabbing"
             >
               <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
                 <div className="h-[3px] w-12 rounded-full bg-border" />
@@ -786,6 +1015,11 @@ export function AskPage() {
                     </motion.button>
                   </div>
                 </div>
+                {locationError && (
+                  <div className="mt-4">
+                    <LocationErrorBanner error={locationError} onDismiss={() => setLocationError(null)} />
+                  </div>
+                )}
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -913,6 +1147,7 @@ function InterpretationChips({ value }: { value: InterpretedSearch | null }) {
     value.filters.category ? `Nhóm: ${value.filters.category}` : null,
     value.filters.district ? `Khu vực: ${value.filters.district}` : null,
     ...value.filters.attributes.map((attribute) => `Mục đích: ${attribute}`),
+    ...(value.filters.tastes ?? []).map((taste) => `Khẩu vị: ${taste}`),
     value.filters.priceLevel ? `Giá mức ${value.filters.priceLevel}` : null,
     value.filters.minRating ? `Từ ${value.filters.minRating} sao` : null,
     value.filters.openNow ? 'Đang mở' : null,
@@ -1090,6 +1325,37 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
       {label}
       <X className="h-3 w-3" />
     </button>
+  );
+}
+
+const LOCATE_ERROR_MESSAGES: Record<LocateError['code'], string> = {
+  denied:
+    'Bạn đã chặn quyền định vị nên trình duyệt sẽ không hỏi lại lần nữa. Hãy bấm biểu tượng ổ khóa / cài đặt trang ở thanh địa chỉ, đổi “Vị trí” sang Cho phép, rồi bấm “Bật vị trí” lần nữa.',
+  unavailable:
+    'Không lấy được vị trí. Kiểm tra xem định vị đã bật trên thiết bị (GPS / Dịch vụ vị trí) chưa, rồi thử lại.',
+  timeout: 'Định vị quá lâu. Kiểm tra kết nối / tín hiệu GPS rồi thử lại.',
+  unsupported: 'Trình duyệt này không hỗ trợ định vị.',
+};
+
+function LocationErrorBanner({
+  error,
+  onDismiss,
+}: {
+  error: LocateError;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-2xl border border-amber-400/40 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-900">
+      <span className="min-w-0 flex-1">{LOCATE_ERROR_MESSAGES[error.code]}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Đóng thông báo"
+        className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-amber-900/60 transition-colors hover:bg-amber-900/10 hover:text-amber-900"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
   );
 }
 

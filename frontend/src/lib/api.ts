@@ -181,6 +181,7 @@ export type InterpretedSearch = {
     category?: string;
     district?: string;
     attributes: string[];
+    tastes?: string[];
     priceLevel?: number;
     minRating?: number;
     openNow?: boolean;
@@ -337,16 +338,20 @@ export async function getRecommendations(
     limit?: number;
     location?: { latitude: number; longitude: number };
     filters?: RecommendationFilters;
+    cursor?: string;
   },
   signal?: AbortSignal,
-): Promise<RecommendationItem[]> {
-  const result = await request<{ data: RecommendationItem[] }>('/recommendations', {
+): Promise<RecommendationPage> {
+  const result = await request<{
+    data: RecommendationItem[];
+    meta?: { nextCursor: string | null };
+  }>('/recommendations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     signal,
   });
-  return result.data;
+  return { items: result.data, nextCursor: result.meta?.nextCursor ?? null };
 }
 
 export async function getForYouRecommendations(): Promise<RecommendationItem[]> {

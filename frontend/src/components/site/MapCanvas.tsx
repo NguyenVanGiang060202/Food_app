@@ -34,8 +34,8 @@ export function MapCanvas({
   const mapInstance = useRef<L.Map | null>(null);
   const markers = useRef<L.Marker[]>([]);
   const userMarker = useRef<L.CircleMarker | null>(null);
-  const lastUserKeyRef = useRef<string | null>(null);
   const locateRequestedRef = useRef(false);
+  const lastFitKeyRef = useRef<string | null>(null);
   const onHoverRef = useRef(onHover);
   const reduced = useReducedMotion();
   const [collapsed, setCollapsed] = useState(false);
@@ -43,7 +43,6 @@ export function MapCanvas({
 
   useEffect(() => {
     if (locateTrigger != null) {
-      lastUserKeyRef.current = null;
       locateRequestedRef.current = true;
     }
   }, [locateTrigger]);
@@ -163,37 +162,44 @@ export function MapCanvas({
           .addTo(map)
           .bindTooltip('Vị trí của bạn', { direction: 'top' })
       : null;
+
+    // Re-fit only when the located content genuinely changes (new ids or a new
+    // user coordinate), never on a plain re-render (e.g. a drawer opening).
+    // This keeps the user's current zoom/pan untouched while the UI re-renders.
+    const itemKey = locatedItems
+      .map((item) => item.id)
+      .sort()
+      .join(',');
+    const locationKey = userLocation ? `${userLocation[0].toFixed(5)},${userLocation[1].toFixed(5)}` : null;
+    const fitKey = locationKey ? `${locationKey}|${itemKey}` : `no-user|${itemKey}`;
+    const locateRequested = locateRequestedRef.current;
+    const shouldFit = lastFitKeyRef.current !== fitKey || locateRequested;
+    lastFitKeyRef.current = fitKey;
+    locateRequestedRef.current = false;
+    if (!shouldFit) return;
+
     if (userLocation) {
-      const userKey = `${userLocation[0].toFixed(5)},${userLocation[1].toFixed(5)}`;
-      const wasLocateRequested = locateRequestedRef.current;
-      if (userKey !== lastUserKeyRef.current || wasLocateRequested) {
-        lastUserKeyRef.current = userKey;
-        locateRequestedRef.current = false;
-        const duration = wasLocateRequested ? 0 : 0.3;
-        if (locatedItems.length > 0) {
-          const points: L.LatLngExpression[] = [userLocation];
-          locatedItems.forEach((item) =>
-            points.push([item.latitude!, item.longitude!] as L.LatLngTuple),
-          );
-          const bounds = L.latLngBounds(points);
-          const tooWide = bounds.getSouthWest().distanceTo(bounds.getNorthEast()) > 8000;
-          if (tooWide) map.flyTo(userLocation, 14, { duration });
-          else map.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
-        } else {
-          map.flyTo(userLocation, 14, { duration });
-        }
+      const duration = locateRequested ? 0 : 0.3;
+      if (locatedItems.length > 0) {
+        const points: L.LatLngExpression[] = [userLocation];
+        locatedItems.forEach((item) =>
+          points.push([item.latitude!, item.longitude!] as L.LatLngTuple),
+        );
+        const bounds = L.latLngBounds(points);
+        const tooWide = bounds.getSouthWest().distanceTo(bounds.getNorthEast()) > 8000;
+        if (tooWide) map.flyTo(userLocation, 14, { duration });
+        else map.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
+      } else {
+        map.flyTo(userLocation, 14, { duration });
       }
     } else if (locatedItems.length === 1) {
-      lastUserKeyRef.current = null;
       map.setView([locatedItems[0].latitude!, locatedItems[0].longitude!], 16);
     } else if (locatedItems.length > 1) {
-      lastUserKeyRef.current = null;
       const bounds = L.latLngBounds(
         locatedItems.map((item) => [item.latitude!, item.longitude!] as L.LatLngTuple),
       );
       map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
     } else {
-      lastUserKeyRef.current = null;
       map.setView(HO_CHI_MINH_CENTER, 12);
     }
   }, [userLocation, locatedItems, sized]);
@@ -208,7 +214,14 @@ export function MapCanvas({
     const item = locatedItems.find((candidate) => candidate.id === activeId);
     if (!marker || !item) return;
     marker.setZIndexOffset(1000);
-    map.flyTo([item.latitude!, item.longitude!], Math.max(map.getZoom(), 16), { duration: 0.45 });
+    const target: L.LatLngExpression = [item.latitude!, item.longitude!];
+    // Pan sideways to the marker keeping the current zoom instead of flying a
+    // 3D arc (out then in), which feels jarring for nearby markers.
+    if (map.getZoom() >= 16) {
+      map.panTo(target, { duration: 0.45 });
+    } else {
+      map.setView(target, 16, { animate: true, duration: 0.45 });
+    }
   }, [activeId, locatedItems]);
   useEffect(() => {
     markers.current.forEach((marker) => {
