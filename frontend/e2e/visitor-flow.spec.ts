@@ -84,9 +84,8 @@ test('visitor can ask for a recommendation and open restaurant detail', async ({
   await page.getByPlaceholder(/Bụng đang réo gì/).fill('hot soup');
   await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
 
-  if (isMobileProject()) await openResultsList(page);
   await expect(pickVisible(page.getByText('Test Kitchen'))).toBeVisible();
-  await page.getByRole('link', { name: 'Xem chi tiết' }).first().click();
+  await page.getByRole('link', { name: 'Chi tiết' }).first().click();
   await expect(page).toHaveURL(/\/restaurants\/restaurant-1$/);
   await expect(page.getByRole('heading', { name: 'Test Kitchen' })).toBeVisible();
 });
@@ -167,7 +166,6 @@ test('visitor can explore inspiration cards and hand the prompt to Bếp', async
     .click();
   await expect(page).toHaveURL(/\/?prompt=/);
   if (isMobileProject()) {
-    await openResultsList(page);
     await expect(pickVisible(page.getByText(/Quán hợp bụng/))).toBeVisible();
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: /Bếp vừa trả lời|Bếp đang nấu/ }).click();
