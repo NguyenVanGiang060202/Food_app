@@ -25,7 +25,7 @@ test('normalizeAiIntent keeps only taxonomy categories and bounds fields', () =>
   assert.deepEqual(intent.categories, ['noodle', 'bun']);
   assert.deepEqual(intent.dishes, ['Phở bò', 'Bún riêu']);
   assert.deepEqual(intent.tastes, ['nóng', 'cay']);
-  assert.equal(intent.district, 'District 1');
+  assert.equal(intent.district, 'Quận 1');
   assert.equal(intent.priceLevel, 2);
   assert.equal(intent.minRating, 4.5);
   assert.equal(intent.openNow, true);
@@ -42,7 +42,7 @@ test('normalizeAiIntent rejects out-of-range and malformed fields', () => {
       minRating: 2.1,
       openNow: 'yes',
       distanceKm: 100,
-      district: 'Thủ Đức',
+      district: 'Hà Nội',
       summary: 42,
     },
     new Set(['noodle', 'bun']),
@@ -122,7 +122,7 @@ test('AiIntentService interprets and keeps only database taxonomy categories', a
   assert.ok(intent);
   assert.deepEqual(intent.categories, ['noodle']);
   assert.deepEqual(intent.dishes, ['phở bò']);
-  assert.equal(intent.district, 'District 1');
+  assert.equal(intent.district, 'Quận 1');
   assert.equal(intent.distanceKm, 5);
 });
 
