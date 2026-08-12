@@ -75,6 +75,7 @@ interface EmbeddingRow {
   name: string;
   normalized_name: string;
   price_level: number | null;
+  semantic_profile: string | null;
   district: string | null;
   city: string | null;
   categories: string[] | null;
@@ -157,6 +158,7 @@ export class EmbeddingLoader {
                 r.name,
                 r.normalized_name,
                 r.price_level,
+                r.semantic_profile,
                 loc.district,
                 loc.city,
                 COALESCE(
@@ -194,6 +196,7 @@ export class EmbeddingLoader {
           city: row.city,
           categories: row.categories ?? [],
           dishes: row.dishes ?? [],
+          profile: row.semantic_profile ?? null,
         },
         existingHash: row.existing_hash,
       }));

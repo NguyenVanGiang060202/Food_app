@@ -1,22 +1,25 @@
-// AI-assisted category classification for enrichment.
+// AI semantic-profile enrichment.
 //
-// The deterministic rule-based classifier (`enrich.ts` / category-classifier)
-// only recognizes obvious names (cà phê, chay, cơm tấm, bún, phở, bánh mì…).
-// Many real names ("À Lôi BBQ", "Ẩm thực Nhật Bản Ajido", "3AM ĐỒ ĂN - TRÀ - TRÁNG
-// MIỆNG") have no rule, so they stay uncategorized and invisible to search.
+// The rule/AI category taxonomy is too coarse to express what a Vietnamese
+// restaurant really is ("bún bò Huế cay, nước dùng ngọt, khách khen no bụng").
+// This one-shot CLI asks the runtime LLM (OpenAI-compatible, e.g. Groq) to
+// write a natural-language food profile (2–4 sentences) per restaurant — main
+// dishes, flavor, texture/feel, portion, cooking style, and what reviewers
+// praise — from the restaurant name, extracted dish names and the latest
+// visible reviews. Profiles become the semantic document for embedding-based
+// search, so free-form user chat no longer needs a fixed category to match.
 //
-// This one-shot CLI closes that gap by asking the runtime LLM (OpenAI-compatible,
-// e.g. Groq) to map each restaurant name — plus a short review excerpt — to one
-// of the ACTIVE category slugs in the database. It only touches restaurants with
-// no category yet, writes with `source = enrichment:category:ai:v1`, and never
-// overrides crawler/fixture/rule-observed facts.
+// The LLM also returns a best-guess category slug as a soft signal (kept for
+// the existing category chips/filters), but the profile is the primary output.
+// Idempotent: only restaurants without a profile yet are processed; the run is
+// recorded in `enrichment_log`.
 //
 //   npm run enrich:ai --workspace crawler                 # all gaps
 //   npm run enrich:ai --workspace crawler -- --limit 300
 //   npm run enrich:ai --workspace crawler -- --dry-run
 //
 // Requires AI_API_KEY / AI_BASE_URL / AI_MODEL (same env as the backend) and a
-// migrated database (022_enrichment_provenance.sql).
+// migrated database (022_enrichment_provenance.sql + 026_semantic_profile.sql).
 
 import { Pool } from 'pg';
 
@@ -27,17 +30,21 @@ interface CategoryRow {
 interface RestaurantRow {
   id: string;
   name: string;
-  review: string | null;
+  dishes: string[];
+  reviews: string[];
 }
-interface Classification {
+interface ProfileItem {
   index: number;
-  slug: string | null;
+  profile: string | null;
+  category: string | null;
 }
 
-const AI_SOURCE = 'enrichment:category:ai:v1';
-const AI_CONFIDENCE = 0.9;
-const BATCH_SIZE = 20;
-const REVIEW_EXCERPT_LENGTH = 60;
+const CATEGORY_SOURCE = 'enrichment:category:ai:v1';
+const CATEGORY_CONFIDENCE = 0.8;
+const BATCH_SIZE = 10;
+const MAX_REVIEWS = 4;
+const REVIEW_EXCERPT_LENGTH = 110;
+const MAX_DISHES = 6;
 const MAX_ATTEMPTS = 8;
 
 function parseArgs(argv: string[]): { limit: number; dryRun: boolean } {
@@ -61,30 +68,35 @@ const truncate = (text: string, max: number): string =>
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function classifyBatch(
+async function generateProfiles(
   baseUrl: string,
   apiKey: string,
   model: string,
   slugs: string[],
   batch: RestaurantRow[],
-): Promise<Classification[]> {
+): Promise<ProfileItem[]> {
   const list = batch
-    .map(
-      (row, index) =>
-        `${index}. ${row.name}${row.review ? ` — trích đánh giá: ${truncate(row.review, REVIEW_EXCERPT_LENGTH)}` : ''}`,
-    )
+    .map((row, index) => {
+      const dishes = row.dishes.length ? ` món: ${row.dishes.join(', ')}` : '';
+      const reviews = row.reviews.length
+        ? ` review: ${row.reviews.map((review) => `"${review}"`).join('; ')}`
+        : '';
+      return `${index}. ${row.name}${dishes}${reviews}`;
+    })
     .join('\n');
   const system = [
-    'Bạn là trợ lý phân loại quán ăn tiếng Việt.',
-    `BẮT BUỘC chỉ dùng đúng một trong các category slug: ${slugs.join(', ')}.`,
-    'Nếu không chắc chắn hoặc không thuộc bất kỳ slug nào, dùng null.',
-    'Trả về JSON object duy nhất dạng {"items": [{"index": 0, "slug": "coffee-shop", "reason": "..."}]}. Không markdown, không giải thích thêm.',
+    'Bạn là chuyên gia ẩm thực Việt Nam.',
+    'Với MỖI quán, viết "profile": 2-4 câu tiếng Việt tự nhiên, chỉ dựa trên thông tin được cung cấp (tên, món, review).',
+    'Gồm: món chính/tinh hoa, hương vị (mặn/ngọt/cay/đậm đà...), độ no/khẩu phần, cách chế biến, điểm khách khen hoặc không gian nếu có.',
+    'KHÔNG bịa món không xuất hiện trong thông tin; không nói giá, địa chỉ, giờ mở cửa.',
+    `Đồng thời gán "category" bằng đúng một trong các slug: ${slugs.join(', ')}, nếu không rõ thì null.`,
+    'Trả về JSON object duy nhất dạng {"items":[{"index":0,"profile":"...","category":"bun"}]}. Không markdown, không giải thích thêm.',
   ].join('\n');
-  const user = `Phân loại từng quán theo tên (và trích đánh giá nếu có).\n\n${list}`;
+  const user = `Viết hồ sơ món ăn cho từng quán.\n\n${list}`;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
+    const timer = setTimeout(() => controller.abort(), 90_000);
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -124,22 +136,27 @@ async function classifyBatch(
       const parsed = JSON.parse(content) as unknown;
       const items = (parsed as { items?: unknown } | undefined)?.items;
       if (!Array.isArray(items)) throw new Error('AI response is missing an items array.');
-      const classifications: Classification[] = [];
+      const profiles: ProfileItem[] = [];
       const seen = new Set<number>();
       for (const entry of items) {
         if (!entry || typeof entry !== 'object') continue;
         const index = (entry as { index?: unknown }).index;
-        const slug = (entry as { slug?: unknown }).slug;
+        const profile = (entry as { profile?: unknown }).profile;
+        const category = (entry as { category?: unknown }).category;
         if (typeof index !== 'number' || !Number.isInteger(index)) continue;
         if (index < 0 || index >= batch.length || seen.has(index)) continue;
         seen.add(index);
-        if (typeof slug === 'string' && slugs.includes(slug)) {
-          classifications.push({ index, slug });
-        } else if (slug === null) {
-          classifications.push({ index, slug: null });
-        }
+        profiles.push({
+          index,
+          profile:
+            typeof profile === 'string' && profile.trim().length > 0
+              ? truncate(profile.trim(), 1500)
+              : null,
+          category:
+            typeof category === 'string' && slugs.includes(category) ? category : null,
+        });
       }
-      return classifications;
+      return profiles;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.error(JSON.stringify({ event: 'ai_batch_timeout', attempt }));
@@ -187,7 +204,7 @@ async function main(): Promise<void> {
     : await pool
         .query(
           `INSERT INTO enrichment_log (run_type, model, params)
-           VALUES ('category:ai', $1, $2) RETURNING id`,
+           VALUES ('profile+category:ai', $1, $2) RETURNING id`,
           [`ai:${model}`, { limit, dryRun, batchSize: BATCH_SIZE }],
         )
         .then((result) => result.rows[0].id as number);
@@ -197,67 +214,131 @@ async function main(): Promise<void> {
       await pool.query<CategoryRow>(`SELECT id, slug FROM category WHERE is_active = true`)
     ).rows;
     const slugSet = new Set(categories.map((category) => category.slug));
-    if (!slugSet.size) throw new Error('No active categories found.');
 
     let sql = `
       SELECT r.id, r.name,
-        (SELECT v.content
-           FROM review v
-          WHERE v.restaurant_id = r.id
-            AND v.is_visible = true
-            AND v.content IS NOT NULL
-            AND length(trim(v.content)) > 0
-          ORDER BY v.reviewed_at DESC NULLS LAST, v.id DESC
-          LIMIT 1) AS review
+        COALESCE((
+          SELECT jsonb_agg(x.n)
+          FROM (
+            SELECT d.normalized_name AS n
+            FROM dish d
+            WHERE d.restaurant_id = r.id
+              AND d.status = 'available'
+              AND d.normalized_name IS NOT NULL
+              AND length(trim(d.normalized_name)) > 0
+            ORDER BY d.id
+            LIMIT ${MAX_DISHES}
+          ) x
+        ), '[]'::jsonb) AS dishes
       FROM restaurant r
       WHERE r.status = 'active'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM restaurant_category rc
-          JOIN category c ON c.id = rc.category_id AND c.is_active = true
-          WHERE rc.restaurant_id = r.id
-        )
+        AND (r.semantic_profile IS NULL OR btrim(r.semantic_profile) = '')
       ORDER BY r.name`;
     if (limit > 0) sql += ` LIMIT ${limit}`;
-    const restaurants = (await pool.query<RestaurantRow>(sql)).rows;
+    const restaurants = (
+      await pool.query<{ id: string; name: string; dishes: string[] }>(sql)
+    ).rows;
     if (!restaurants.length) {
       console.log(
-        JSON.stringify({ event: 'enrichment_completed', dryRun, scanned: 0, categoriesApplied: 0 }),
+        JSON.stringify({ event: 'enrichment_completed', dryRun, scanned: 0, profilesApplied: 0 }),
       );
       return;
     }
 
-    let applied = 0;
+    const { rows: reviewRows } = await pool.query<{
+      restaurant_id: string;
+      content: string;
+    }>(
+      `SELECT restaurant_id, content
+       FROM review
+       WHERE content IS NOT NULL
+         AND (is_visible IS TRUE OR is_visible IS NULL)
+         AND restaurant_id = ANY($1)
+       ORDER BY restaurant_id, reviewed_at DESC NULLS LAST, id DESC`,
+      [restaurants.map((row) => row.id)],
+    );
+    const reviewsByRestaurant = new Map<string, string[]>();
+    for (const review of reviewRows) {
+      const list = reviewsByRestaurant.get(review.restaurant_id) ?? [];
+      if (list.length < MAX_REVIEWS) {
+        list.push(truncate(review.content, REVIEW_EXCERPT_LENGTH));
+      }
+      reviewsByRestaurant.set(review.restaurant_id, list);
+    }
+    const rows: RestaurantRow[] = restaurants.map((row) => ({
+      id: row.id,
+      name: row.name,
+      dishes: row.dishes ?? [],
+      reviews: reviewsByRestaurant.get(row.id) ?? [],
+    }));
+
+    let profilesApplied = 0;
+    let categoriesApplied = 0;
     let scanned = 0;
-    for (let offset = 0; offset < restaurants.length; offset += BATCH_SIZE) {
-      const batch = restaurants.slice(offset, offset + BATCH_SIZE);
-      const classifications = await classifyBatch(baseUrl, apiKey, model, [...slugSet], batch);
+    for (let offset = 0; offset < rows.length; offset += BATCH_SIZE) {
+      const batch = rows.slice(offset, offset + BATCH_SIZE);
+      const items = await generateProfiles(baseUrl, apiKey, model, [...slugSet], batch);
       scanned += batch.length;
 
-      const values: string[] = [];
-      const params: unknown[] = [];
+      const profileValues: string[] = [];
+      const profileParams: unknown[] = [];
       let index = 1;
-      for (const item of classifications) {
+      for (const item of items) {
         const row = batch[item.index];
-        if (!row || !item.slug || !slugSet.has(item.slug)) continue;
-        params.push(row.id, item.slug, AI_SOURCE);
-        values.push(`($${index}::uuid, $${index + 1}, $${index + 2})`);
-        index += 3;
-        applied += 1;
+        if (!row || !item.profile) continue;
+        profileParams.push(row.id, item.profile);
+        profileValues.push(`($${index}::uuid, $${index + 1}::text)`);
+        index += 2;
+        profilesApplied += 1;
       }
 
-      if (!dryRun && values.length) {
-        await pool.query(
-          `INSERT INTO restaurant_category (restaurant_id, category_id, source, confidence, updated_at)
-           SELECT v.restaurant_id, c.id, v.source, ${AI_CONFIDENCE}, now()
-           FROM (VALUES ${values.join(', ')})
-                AS v(restaurant_id, category_slug, source)
-           JOIN category c ON c.slug = v.category_slug AND c.is_active = true
-           ON CONFLICT (restaurant_id, category_id) DO NOTHING`,
-          params,
+      const categoryValues: string[] = [];
+      const categoryParams: unknown[] = [];
+      let categoryIndex = 1;
+      for (const item of items) {
+        const row = batch[item.index];
+        if (!row || !item.category || !slugSet.has(item.category)) continue;
+        categoryParams.push(row.id, item.category, CATEGORY_SOURCE);
+        categoryValues.push(
+          `($${categoryIndex}::uuid, $${categoryIndex + 1}::text, $${categoryIndex + 2}::text)`,
         );
+        categoryIndex += 3;
+        categoriesApplied += 1;
       }
-      console.log(JSON.stringify({ event: 'batch', dryRun, scanned, applied }));
+
+      if (!dryRun) {
+        if (profileValues.length) {
+          await pool.query(
+            `UPDATE restaurant r
+             SET semantic_profile = v.profile, updated_at = now()
+             FROM (VALUES ${profileValues.join(', ')})
+                  AS v(restaurant_id, profile)
+             WHERE r.id = v.restaurant_id
+               AND (r.semantic_profile IS NULL OR btrim(r.semantic_profile) = '')`,
+            profileParams,
+          );
+        }
+        if (categoryValues.length) {
+          await pool.query(
+            `INSERT INTO restaurant_category (restaurant_id, category_id, source, confidence, updated_at)
+             SELECT v.restaurant_id, c.id, v.source, ${CATEGORY_CONFIDENCE}, now()
+             FROM (VALUES ${categoryValues.join(', ')})
+                  AS v(restaurant_id, category_slug, source)
+             JOIN category c ON c.slug = v.category_slug AND c.is_active = true
+             ON CONFLICT (restaurant_id, category_id) DO NOTHING`,
+            categoryParams,
+          );
+        }
+      }
+      console.log(
+        JSON.stringify({
+          event: 'batch',
+          dryRun,
+          scanned,
+          profilesApplied,
+          categoriesApplied,
+        }),
+      );
     }
 
     if (logId !== null) {
@@ -266,11 +347,17 @@ async function main(): Promise<void> {
             SET status = 'completed', finished_at = now(),
                 restaurants_scanned = $2, categories_applied = $3
           WHERE id = $1`,
-        [logId, scanned, applied],
+        [logId, scanned, profilesApplied],
       );
     }
     console.log(
-      JSON.stringify({ event: 'enrichment_completed', dryRun, scanned, categoriesApplied: applied }),
+      JSON.stringify({
+        event: 'enrichment_completed',
+        dryRun,
+        scanned,
+        profilesApplied,
+        categoriesApplied,
+      }),
     );
   } catch (error) {
     if (logId !== null) {
@@ -283,9 +370,7 @@ async function main(): Promise<void> {
         )
         .catch(() => undefined);
     }
-    console.error(
-      JSON.stringify({ event: 'enrichment_failed', message: String(error) }),
-    );
+    console.error(JSON.stringify({ event: 'enrichment_failed', message: String(error) }));
     process.exitCode = 1;
   } finally {
     await pool.end();

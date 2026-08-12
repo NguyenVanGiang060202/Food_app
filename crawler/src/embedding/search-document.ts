@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto';
 
-export const EMBEDDING_TEMPLATE_VERSION = 'v1';
+export const EMBEDDING_TEMPLATE_VERSION = 'v2';
 
 export interface RestaurantEmbeddingSource {
   name: string;
@@ -18,11 +18,15 @@ export interface RestaurantEmbeddingSource {
   district?: string | null;
   city?: string | null;
   priceLevel?: number | null;
+  profile?: string | null;
 }
 
 export function buildSearchDocument(source: RestaurantEmbeddingSource): string {
   const parts: string[] = [source.name.trim()];
 
+  if (source.profile) {
+    parts.push(`profile: ${source.profile}`);
+  }
   if (source.categories.length > 0) {
     parts.push(`categories: ${source.categories.join(', ')}`);
   }

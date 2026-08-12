@@ -159,10 +159,30 @@ function buildStableExternalId(
   return `gmaps_${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
 }
 
+const NAMED_DISTRICTS: Record<string, string> = {
+  'bình thạnh': 'Bình Thạnh',
+  'phú nhuận': 'Phú Nhuận',
+  'tân bình': 'Tân Bình',
+  'tân phú': 'Tân Phú',
+  'gò vấp': 'Gò Vấp',
+  'bình tân': 'Bình Tân',
+  'thủ đức': 'Thủ Đức',
+  'nhà bè': 'Nhà Bè',
+  'bình chánh': 'Bình Chánh',
+  'hóc môn': 'Hóc Môn',
+  'củ chi': 'Củ Chi',
+  'cần giờ': 'Cần Giờ',
+};
+
 function inferDistrict(location: string | undefined): string | undefined {
   if (!location) return undefined;
-  const match = location.match(/(?:quận|district)\s*\d{1,2}/i);
-  return match?.[0];
+  const quậnMatch = location.toLowerCase().match(/\bquận\s*(\d{1,2})\b/);
+  if (quậnMatch) return `Quận ${Number(quậnMatch[1])}`;
+  const lower = location.toLowerCase();
+  for (const [key, canonical] of Object.entries(NAMED_DISTRICTS)) {
+    if (new RegExp(`\\b${key}\\b`).test(lower)) return canonical;
+  }
+  return undefined;
 }
 
 function inferCity(location: string | undefined): string | undefined {
