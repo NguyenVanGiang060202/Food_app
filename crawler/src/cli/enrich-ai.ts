@@ -50,6 +50,10 @@ const MAX_ATTEMPTS = clampInt(process.env.AI_MAX_ATTEMPTS, 8, 1, 20);
 const BATCH_COOLDOWN_MS = clampInt(process.env.AI_BATCH_COOLDOWN_MS, 1_000, 0, 60_000);
 const MAX_RETRY_WAIT_MS = 60_000;
 const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
+// Some OpenAI-compatible gateways (e.g. api.shineshop.dev) reject requests that
+// omit max_tokens / max_output_tokens. Groq accepts it as an optional param, so
+// this is safe when switching back to Groq.
+const MAX_OUTPUT_TOKENS = clampInt(process.env.AI_MAX_OUTPUT_TOKENS, 8_192, 256, 128_000);
 const MAX_REVIEWS = 4;
 const REVIEW_EXCERPT_LENGTH = 110;
 const MAX_DISHES = 6;
@@ -120,6 +124,7 @@ async function generateProfiles(
         body: JSON.stringify({
           model,
           temperature: 0,
+          max_tokens: MAX_OUTPUT_TOKENS,
           response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: system },
