@@ -41,11 +41,24 @@ interface ProfileItem {
 
 const CATEGORY_SOURCE = 'enrichment:category:ai:v1';
 const CATEGORY_CONFIDENCE = 0.8;
-const BATCH_SIZE = 10;
+
+// Tunable from the shell so a run can be shaped to the provider rate limits
+// without a code change, e.g.
+//   AI_BATCH_SIZE=3 AI_MAX_ATTEMPTS=5 AI_BATCH_COOLDOWN_MS=2000 docker compose run ...
+const BATCH_SIZE = clampInt(process.env.AI_BATCH_SIZE, 10, 1, 50);
+const MAX_ATTEMPTS = clampInt(process.env.AI_MAX_ATTEMPTS, 8, 1, 20);
+const BATCH_COOLDOWN_MS = clampInt(process.env.AI_BATCH_COOLDOWN_MS, 1_000, 0, 60_000);
+const MAX_RETRY_WAIT_MS = 60_000;
+const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
 const MAX_REVIEWS = 4;
 const REVIEW_EXCERPT_LENGTH = 110;
 const MAX_DISHES = 6;
-const MAX_ATTEMPTS = 8;
+
+function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const value = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
 
 function parseArgs(argv: string[]): { limit: number; dryRun: boolean } {
   let limit = 0;
@@ -117,7 +130,14 @@ async function generateProfiles(
       });
       if (response.status === 429 || response.status >= 500) {
         const retryAfter = Number(response.headers.get('retry-after'));
-        const delayMs = (retryAfter > 0 ? retryAfter * 1000 : 3_000) * Math.pow(2, attempt - 1);
+        // Never scale a provider-provided retry-after by the attempt counter —
+        // at attempt 8 that used to mean hours of sleep per batch (the run
+        // looked hung). Cap any single wait so the process always makes
+        // progress and eventually exits.
+        const delayMs =
+          retryAfter > 0
+            ? Math.min(retryAfter * 1000, MAX_RETRY_WAIT_MS)
+            : Math.min(3_000 * Math.pow(2, attempt - 1), MAX_RETRY_WAIT_MS);
         console.error(
           JSON.stringify({ event: 'ai_batch_retry', attempt, status: response.status, delayMs }),
         );
@@ -240,7 +260,15 @@ async function main(): Promise<void> {
     ).rows;
     if (!restaurants.length) {
       console.log(
-        JSON.stringify({ event: 'enrichment_completed', dryRun, scanned: 0, profilesApplied: 0 }),
+        JSON.stringify({
+          event: 'enrichment_completed',
+          dryRun,
+          scanned: 0,
+          profilesApplied: 0,
+          categoriesApplied: 0,
+          failedBatches: 0,
+          missing: 0,
+        }),
       );
       return;
     }
@@ -275,9 +303,33 @@ async function main(): Promise<void> {
     let profilesApplied = 0;
     let categoriesApplied = 0;
     let scanned = 0;
+    let failedBatches = 0;
+    let consecutiveFailures = 0;
     for (let offset = 0; offset < rows.length; offset += BATCH_SIZE) {
       const batch = rows.slice(offset, offset + BATCH_SIZE);
-      const items = await generateProfiles(baseUrl, apiKey, model, [...slugSet], batch);
+      let items: ProfileItem[];
+      try {
+        items = await generateProfiles(baseUrl, apiKey, model, [...slugSet], batch);
+        consecutiveFailures = 0;
+      } catch (error) {
+        // Idempotency makes a skipped batch safe: it is simply picked up on the
+        // next run. Stop early only when the provider is clearly down, so a
+        // terminal rate limit does not burn through every remaining batch.
+        consecutiveFailures += 1;
+        failedBatches += 1;
+        console.error(
+          JSON.stringify({
+            event: 'ai_batch_failed',
+            offset,
+            consecutiveFailures,
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        if (consecutiveFailures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
+          throw new Error(`Stopping early after ${MAX_CONSECUTIVE_BATCH_FAILURES} consecutive AI batch failures.`);
+        }
+        continue;
+      }
       scanned += batch.length;
 
       const profileValues: string[] = [];
@@ -337,9 +389,15 @@ async function main(): Promise<void> {
           scanned,
           profilesApplied,
           categoriesApplied,
+          failedBatches,
         }),
       );
+      if (BATCH_COOLDOWN_MS > 0 && offset + BATCH_SIZE < rows.length) {
+        await sleep(BATCH_COOLDOWN_MS);
+      }
     }
+
+    const missing = rows.length - scanned;
 
     if (logId !== null) {
       await pool.query(
@@ -357,6 +415,9 @@ async function main(): Promise<void> {
         scanned,
         profilesApplied,
         categoriesApplied,
+        failedBatches,
+        missing,
+        hint: missing > 0 ? `re-run to cover ${missing} remaining (idempotent)` : undefined,
       }),
     );
   } catch (error) {
