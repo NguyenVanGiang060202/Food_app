@@ -48,6 +48,9 @@ const CATEGORY_CONFIDENCE = 0.8;
 const BATCH_SIZE = clampInt(process.env.AI_BATCH_SIZE, 10, 1, 50);
 const MAX_ATTEMPTS = clampInt(process.env.AI_MAX_ATTEMPTS, 8, 1, 20);
 const BATCH_COOLDOWN_MS = clampInt(process.env.AI_BATCH_COOLDOWN_MS, 1_000, 0, 60_000);
+// Parallel batches. A batch of 3 only uses one request at a time; raising this
+// overlaps the LLM wait so N batches finish in roughly N/concurrency rounds.
+const CONCURRENCY = clampInt(process.env.AI_CONCURRENCY, 1, 1, 8);
 const MAX_RETRY_WAIT_MS = 60_000;
 const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
 // Some OpenAI-compatible gateways (e.g. api.shineshop.dev) reject requests that
@@ -310,7 +313,8 @@ async function main(): Promise<void> {
     let scanned = 0;
     let failedBatches = 0;
     let consecutiveFailures = 0;
-    for (let offset = 0; offset < rows.length; offset += BATCH_SIZE) {
+
+    const processBatchAt = async (offset: number): Promise<void> => {
       const batch = rows.slice(offset, offset + BATCH_SIZE);
       let items: ProfileItem[];
       try {
@@ -331,9 +335,11 @@ async function main(): Promise<void> {
           }),
         );
         if (consecutiveFailures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
-          throw new Error(`Stopping early after ${MAX_CONSECUTIVE_BATCH_FAILURES} consecutive AI batch failures.`);
+          throw new Error(
+            `Stopping early after ${MAX_CONSECUTIVE_BATCH_FAILURES} consecutive AI batch failures.`,
+          );
         }
-        continue;
+        return;
       }
       scanned += batch.length;
 
@@ -400,7 +406,17 @@ async function main(): Promise<void> {
       if (BATCH_COOLDOWN_MS > 0 && offset + BATCH_SIZE < rows.length) {
         await sleep(BATCH_COOLDOWN_MS);
       }
-    }
+    };
+
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      while (cursor < rows.length) {
+        const offset = cursor;
+        cursor += BATCH_SIZE;
+        await processBatchAt(offset);
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
 
     const missing = rows.length - scanned;
 

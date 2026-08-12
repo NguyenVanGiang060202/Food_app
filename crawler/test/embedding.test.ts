@@ -19,6 +19,9 @@ const baseSource = {
   district: 'Quận 1',
   city: 'Hồ Chí Minh',
   priceLevel: 2,
+  profile: 'Nước dùng đậm đà, thịt bò mềm, khách khen no bụng.',
+  attributes: ['Cay', 'Nóng', 'Thịt bò'],
+  reviews: ['Nước dùng ngon, khách đông nhưng phục vụ nhanh'],
 };
 
 test('buildSearchDocument is deterministic and includes structured fields', () => {
@@ -26,8 +29,11 @@ test('buildSearchDocument is deterministic and includes structured fields', () =
   const second = buildSearchDocument(baseSource);
   assert.equal(first, second);
   assert.match(first, /Bún Bò Huế Cô Hường/);
+  assert.match(first, /profile: Nước dùng đậm đà/);
   assert.match(first, /categories: noodle/);
   assert.match(first, /dishes: Bún bò Huế, Bún riêu/);
+  assert.match(first, /attributes: Cay, Nóng, Thịt bò/);
+  assert.match(first, /reviews: Nước dùng ngon/);
   assert.match(first, /location: Quận 1, Hồ Chí Minh/);
   assert.match(first, /price level: 2\/4/);
 });

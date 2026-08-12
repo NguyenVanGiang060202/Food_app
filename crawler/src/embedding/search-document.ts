@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto';
 
-export const EMBEDDING_TEMPLATE_VERSION = 'v2';
+export const EMBEDDING_TEMPLATE_VERSION = 'v3';
 
 export interface RestaurantEmbeddingSource {
   name: string;
@@ -19,6 +19,8 @@ export interface RestaurantEmbeddingSource {
   city?: string | null;
   priceLevel?: number | null;
   profile?: string | null;
+  attributes?: string[];
+  reviews?: string[];
 }
 
 export function buildSearchDocument(source: RestaurantEmbeddingSource): string {
@@ -32,6 +34,12 @@ export function buildSearchDocument(source: RestaurantEmbeddingSource): string {
   }
   if (source.dishes.length > 0) {
     parts.push(`dishes: ${source.dishes.join(', ')}`);
+  }
+  if (source.attributes && source.attributes.length > 0) {
+    parts.push(`attributes: ${source.attributes.join(', ')}`);
+  }
+  if (source.reviews && source.reviews.length > 0) {
+    parts.push(`reviews: ${source.reviews.join('; ')}`);
   }
   const location = [source.district, source.city].filter(Boolean).join(', ');
   if (location) {

@@ -23,6 +23,12 @@ import {
 } from './search-document';
 import { EmbeddingProvider, OpenAICompatibleEmbeddingProvider } from './embedding-provider';
 
+const EMBED_MAX_REVIEWS = 4;
+const EMBED_REVIEW_EXCERPT_LENGTH = 110;
+
+const truncate = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max)}…` : text;
+
 export interface EmbeddingSummary {
   scanned: number;
   embedded: number;
@@ -80,6 +86,8 @@ interface EmbeddingRow {
   city: string | null;
   categories: string[] | null;
   dishes: string[] | null;
+  attributes: string[] | null;
+  reviews: string[] | null;
   existing_hash: string | null;
 }
 
@@ -170,8 +178,29 @@ export class EmbeddingLoader {
                 COALESCE(
                   (SELECT jsonb_agg(DISTINCT d.normalized_name)
                      FROM dish d
-                    WHERE d.restaurant_id = r.id), '[]'::jsonb
+                    WHERE d.restaurant_id = r.id
+                      AND d.status = 'available'), '[]'::jsonb
                 ) AS dishes,
+                COALESCE(
+                  (SELECT jsonb_agg(DISTINCT fa.name)
+                     FROM dish d
+                     JOIN dish_attribute da ON da.dish_id = d.id
+                     JOIN food_attribute fa ON fa.id = da.attribute_id AND fa.is_active = true
+                    WHERE d.restaurant_id = r.id
+                      AND d.status = 'available'), '[]'::jsonb
+                ) AS attributes,
+                COALESCE(
+                  (SELECT jsonb_agg(x.review_content)
+                     FROM (
+                       SELECT review.content AS review_content
+                       FROM review
+                       WHERE review.restaurant_id = r.id
+                         AND review.content IS NOT NULL
+                         AND (review.is_visible IS TRUE OR review.is_visible IS NULL)
+                       ORDER BY review.reviewed_at DESC NULLS LAST, review.id DESC
+                       LIMIT ${EMBED_MAX_REVIEWS}
+                     ) x), '[]'::jsonb
+                ) AS reviews,
                 (SELECT e.content_hash
                    FROM restaurant_embedding e
                   WHERE e.restaurant_id = r.id
@@ -197,6 +226,8 @@ export class EmbeddingLoader {
           categories: row.categories ?? [],
           dishes: row.dishes ?? [],
           profile: row.semantic_profile ?? null,
+          attributes: row.attributes ?? [],
+          reviews: (row.reviews ?? []).map((review) => truncate(review, EMBED_REVIEW_EXCERPT_LENGTH)),
         },
         existingHash: row.existing_hash,
       }));
