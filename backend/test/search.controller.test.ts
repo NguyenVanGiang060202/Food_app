@@ -316,3 +316,84 @@ test('for-you falls back to rating when saved preferences have no matches', asyn
   assert.equal(result.data[0].restaurant.id, 'fallback');
   assert.equal(calls, 2);
 });
+
+test('recommendation does not turn the raw sentence into a text filter when interpretation consumed it', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('cool')]);
+    },
+  };
+  const controller = new RecommendationsController(databaseService as never);
+
+  await controller.recommend({ query: 'trời đang nóng', limit: 5 });
+
+  // The whole sentence became a comfort taste + semantic query; the SQL text
+  // filter must stay undefined instead of LIKE-matching "trời"/"nóng".
+  assert.equal(calls[0].query, undefined);
+  assert.deepEqual(calls[0].tastes, ['mát']);
+  assert.equal(calls[0].semanticQuery, 'món mát lạnh');
+});
+
+test('recommendation relaxes inferred tastes when the embedding page is short', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const embedding = {
+    isEnabled: () => true,
+    activeModel: async () => 'bge-m3@doc:v3',
+    embed: async () => new Array(1024).fill(0),
+  };
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      // First call: taste filter matches only 1 row (< limit 5). Second call
+      // (tastes relaxed) returns a full page so the semantic rank can fill it.
+      return (filters.tastes as string[])?.length ? page([restaurant('one')]) : page([restaurant('a'), restaurant('b'), restaurant('c')]);
+    },
+  };
+  const controller = new RecommendationsController(
+    databaseService as never,
+    undefined,
+    undefined,
+    embedding as never,
+  );
+
+  const result = await controller.recommend({ query: 'trời đang nóng', limit: 5 });
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].tastes, ['mát']);
+  // Inferred taste dropped, explicit UI tastes (none here) kept.
+  assert.deepEqual(calls[1].tastes, []);
+  assert.equal(result.data.length, 3);
+});
+
+test('recommendation keeps explicit UI tastes when the embedding page is short', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const embedding = {
+    isEnabled: () => true,
+    activeModel: async () => 'bge-m3@doc:v3',
+    embed: async () => new Array(1024).fill(0),
+  };
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('one')]);
+    },
+  };
+  const controller = new RecommendationsController(
+    databaseService as never,
+    undefined,
+    undefined,
+    embedding as never,
+  );
+
+  await controller.recommend({
+    query: 'trời đang nóng',
+    filters: { taste: ['mát'] },
+    limit: 5,
+  });
+
+  // Only one call: the explicitly chosen taste is intent, never dropped.
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].tastes, ['mát']);
+});

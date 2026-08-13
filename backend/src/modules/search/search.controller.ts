@@ -627,7 +627,13 @@ export class RecommendationsController {
         '').slice(0, 200) || undefined;
     const semanticEmbedding = semanticText ? await this.resolveEmbedding(semanticText) : null;
     const filters = {
-      query: interpreted.query ?? body.query,
+      // Only the distilled food phrase becomes the SQL text filter. When the
+      // interpretation consumed the whole sentence into structured filters
+      // (weather → comfort taste + semantic query), `interpreted.query` is
+      // empty and falling back to the raw sentence would add a LIKE filter on
+      // words like "trời"/"nóng" that match almost nothing. The semantic
+      // embedding already encodes that intent.
+      query: interpreted.query,
       category,
       latitude: body.location?.latitude,
       longitude: body.location?.longitude,
@@ -688,6 +694,20 @@ export class RecommendationsController {
     }
     if (!page.data.length && effective.query) {
       effective = { ...effective, query: undefined };
+      page = await this.restaurantsService.list(effective);
+    }
+    // With a live embedding, an inferred taste can AND the candidates down to a
+    // handful of rows (e.g. only 12 restaurants carry the "mát" attribute in a
+    // 2.5k-restaurant DB), leaving the semantic ranking almost nothing to sort.
+    // The query vector already encodes the taste, so when the page is short of
+    // the requested limit, drop the inferred tastes (never the explicit UI
+    // picks) and let the semantic score fill the page.
+    if (
+      page.data.length < body.limit &&
+      effective.embedding &&
+      (effective.tastes ?? []).some((taste) => !explicitTastes.includes(taste))
+    ) {
+      effective = { ...effective, tastes: explicitTastes };
       page = await this.restaurantsService.list(effective);
     }
     if (!page.data.length) {
