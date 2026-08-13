@@ -29,8 +29,34 @@ const EMBED_REVIEW_EXCERPT_LENGTH = 110;
 // parallel requests; cap the worker pool so uploads stay stable.
 const EMBED_CONCURRENCY = clampInt(process.env.EMBEDDING_CONCURRENCY, 4, 1, 32);
 
-const truncate = (text: string, max: number): string =>
-  text.length > max ? `${text.slice(0, max)}…` : text;
+// Truncation must not split a surrogate pair (a 4-byte emoji is two UTF-16
+// code units); a lone surrogate produces an invalid UTF-8 sequence that the
+// embedding provider rejects with a 400 "invalid input". Strip any unpaired
+// surrogate already present in the source text too.
+const cleanSurrogates = (text: string): string => {
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        result += text[i] + text[i + 1];
+        i += 1;
+      }
+      continue;
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      continue;
+    }
+    result += text[i];
+  }
+  return result;
+};
+
+const truncate = (text: string, max: number): string => {
+  const cleaned = cleanSurrogates(text);
+  return cleaned.length > max ? `${cleaned.slice(0, max)}…` : cleaned;
+};
 
 function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
   const value = raw ? Number(raw) : NaN;

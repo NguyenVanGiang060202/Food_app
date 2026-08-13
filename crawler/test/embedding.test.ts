@@ -67,6 +67,24 @@ test('embeddingModelId binds the provider model to the template version', () => 
   );
 });
 
+test('buildSearchDocument strips unpaired surrogates that would break UTF-8 encoding', () => {
+  const loneHigh = 'món ngon \ud83d';
+  const loneLow = 'món ngon \udfe0';
+  const paired = 'món ngon \ud83c\udf54';
+  const doc = buildSearchDocument({
+    name: 'Quán Test',
+    normalizedName: 'quan test',
+    categories: [loneHigh],
+    dishes: [loneLow],
+    reviews: [paired],
+  });
+  assert.ok(!doc.includes('\ud83d') || !doc.match(/\ud83d(?![\udc00-\udfff])/));
+  assert.ok(!doc.includes('\udfe0'));
+  assert.ok(doc.includes('🍔'));
+  const jsonSafe = JSON.stringify(doc);
+  assert.doesNotThrow(() => Buffer.from(jsonSafe, 'utf8').toString('utf8'));
+});
+
 test('selectEmbeddingTargets backfills only restaurants without a vector', () => {
   const candidates: EmbeddingCandidateRow[] = [
     {
