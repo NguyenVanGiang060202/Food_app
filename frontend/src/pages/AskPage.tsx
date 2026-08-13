@@ -30,6 +30,7 @@ import {
   type RecommendationItem,
 } from '@/lib/api';
 import { Stagger, StaggerItem } from '@/lib/motion';
+import { hasLocationIntent } from '@/lib/location-intent';
 
 type Filters = {
   attrs: string[];
@@ -326,10 +327,11 @@ export function AskPage() {
     setTrending([]);
     setLoadingMore(false);
     try {
+      const locationIntent = hasLocationIntent(trimmed);
       const requestLocation =
         locationOverride !== undefined
           ? locationOverride
-          : nextFilters.maxDistanceKm && !location
+          : (nextFilters.maxDistanceKm || locationIntent) && !location
             ? await locate()
             : location;
       const effectiveRadiusKm = nextFilters.maxDistanceKm ?? (requestLocation ? 5 : undefined);

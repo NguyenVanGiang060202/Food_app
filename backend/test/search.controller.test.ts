@@ -101,6 +101,53 @@ test('unsupported cuisine aliases do not become impossible category filters', as
   assert.equal(calls[0].category, undefined);
 });
 
+test('"gợi ý" does not map to the Italian cuisine alias', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('any')]);
+    },
+  };
+  const controller = new RecommendationsController(databaseService as never);
+
+  await controller.recommend({ query: 'hiện tại trời mưa, hãy gợi ý cho tôi quán gần đây', limit: 5 });
+
+  assert.equal(calls[0].category, undefined);
+});
+
+test('rainy weather maps to a hot-comfort taste and semantic query', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('warm')]);
+    },
+  };
+  const controller = new RecommendationsController(databaseService as never);
+
+  await controller.recommend({ query: 'trời mưa rét, quán nào ấm bụng', limit: 5 });
+
+  assert.deepEqual(calls[0].tastes, ['nóng']);
+  assert.equal(calls[0].semanticQuery, 'món nóng ấm bụng');
+});
+
+test('cold weather maps to hot comfort food instead of the "mát" taste', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('warm')]);
+    },
+  };
+  const controller = new RecommendationsController(databaseService as never);
+
+  await controller.recommend({ query: 'trời trở lạnh, ăn gì cho ấm', limit: 5 });
+
+  assert.deepEqual(calls[0].tastes, ['nóng']);
+  assert.equal(calls[0].semanticQuery, 'món nóng ấm bụng');
+});
+
 test('recommendation uses the LLM intent when the AI service is enabled', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const databaseService = {

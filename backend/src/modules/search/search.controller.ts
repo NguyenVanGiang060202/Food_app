@@ -31,6 +31,8 @@ interface InterpretedFilters {
   district?: string;
   attributes: string[];
   tastes: string[];
+  /** Deterministic fallback for the embedding input when the LLM is offline. */
+  semanticQuery?: string;
   /** The query reduced to meaningful food terms only (filler/location/taste words removed). */
   query?: string;
 }
@@ -57,7 +59,8 @@ const CATEGORY_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['vegetarian', 'vegetarian'],
   ['chay', 'vegetarian'],
   ['italian', 'italian'],
-  ['ý', 'italian'],
+  ['món ý', 'italian'],
+  ['ẩm thực ý', 'italian'],
   ['vietnamese', 'vietnamese'],
   ['việt', 'vietnamese'],
   ['phở', 'noodle'],
@@ -211,6 +214,20 @@ const TASTE_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['tươi', 'tươi'],
 ];
 
+// Weather/situation words that imply "comfort food" (hot, hearty dishes) even
+// though the user never names a taste. "Trời mưa" → "món nóng". Kept separate
+// from TASTE_ALIASES so the taste stays AND-able as an exact attribute.
+const WEATHER_COMFORT_PHRASES: ReadonlyArray<readonly [string, string]> = [
+  ['trời mưa', 'nóng'],
+  ['mưa rét', 'nóng'],
+  ['trời lạnh', 'nóng'],
+  ['trời trở lạnh', 'nóng'],
+  ['lạnh buốt', 'nóng'],
+  ['se lạnh', 'nóng'],
+  ['mùa mưa', 'nóng'],
+  ['gió lạnh', 'nóng'],
+];
+
 const FILLER_WORDS: readonly string[] = [
   'tìm',
   'cho',
@@ -276,6 +293,12 @@ const FILLER_WORDS: readonly string[] = [
   'xịn',
   'sang',
   'tiền',
+  'đang',
+  'hãy',
+  'hiện',
+  'bây',
+  'giờ',
+  'này',
 ];
 
 const FILLER_PHRASES: readonly string[] = [
@@ -291,6 +314,8 @@ const FILLER_PHRASES: readonly string[] = [
   'bình dân',
   'giá rẻ',
   'cao cấp',
+  'hiện tại',
+  'gợi ý',
 ];
 
 // Subjective quality/filler words an LLM may wrongly put into `tastes`. They
@@ -340,8 +365,15 @@ const cleanTasteTerms = (terms: string[]): string[] =>
 
 function interpretQuery(query: string): InterpretedFilters {
   const normalized = query.toLocaleLowerCase('vi-VN');
-  const dishTypeCategory = DISH_TYPE_ALIASES.find(([alias]) => normalized.includes(alias))?.[1];
-  const category = dishTypeCategory ?? CATEGORY_ALIASES.find(([alias]) => normalized.includes(alias))?.[1];
+  // Match aliases as whole words/phrases so short aliases like "ý" or "mì"
+  // cannot fire inside unrelated words ("gợi ý", "mì" inside "mì tôm").
+  const hasPhrase = (phrase: string): boolean =>
+    new RegExp(
+      `(^|[^\\p{L}\\p{N}])${escapeRegExp(phrase)}(?=$|[^\\p{L}\\p{N}])`,
+      'u',
+    ).test(normalized);
+  const dishTypeCategory = DISH_TYPE_ALIASES.find(([alias]) => hasPhrase(alias))?.[1];
+  const category = dishTypeCategory ?? CATEGORY_ALIASES.find(([alias]) => hasPhrase(alias))?.[1];
   const attributes = [
     ...(normalized.includes('quiet') || normalized.includes('yên tĩnh') ? ['quiet'] : []),
     ...(normalized.includes('date') || normalized.includes('hẹn hò') ? ['date-friendly'] : []),
@@ -369,6 +401,18 @@ function interpretQuery(query: string): InterpretedFilters {
     }
   }
   const tastes: string[] = [];
+  // "Trời mưa"/"trời lạnh" imply comfort food without naming a taste. Run
+  // BEFORE TASTE_ALIASES so "trời trở lạnh" is consumed as a weather phrase
+  // instead of "lạnh" → "mát" (cold drinks), which would be the wrong signal.
+  let comfortTaste: string | undefined;
+  for (const [phrase, taste] of WEATHER_COMFORT_PHRASES) {
+    const next = removePhrase(refined, phrase);
+    if (next !== refined) {
+      refined = next;
+      comfortTaste = taste;
+      break;
+    }
+  }
   for (const [alias, canonical] of TASTE_ALIASES) {
     const next = removePhrase(refined, alias);
     if (next !== refined) {
@@ -385,7 +429,8 @@ function interpretQuery(query: string): InterpretedFilters {
     ...(category ? { categoryFromDishType: Boolean(dishTypeCategory) } : {}),
     ...(district ? { district } : {}),
     attributes,
-    tastes,
+    tastes: comfortTaste && !tastes.includes(comfortTaste) ? [...tastes, comfortTaste] : tastes,
+    ...(comfortTaste ? { semanticQuery: `món ${comfortTaste} ấm bụng` } : {}),
     ...(queryTerm ? { query: queryTerm } : {}),
   };
 }
@@ -522,12 +567,14 @@ export class RecommendationsController {
     // sentence or the LLM) are intent, not decoration: they are kept when the
     // fallback chain relaxes the inferred keyword filters.
     const explicitTastes = body.filters?.taste ?? [];
-    // A distilled food-only phrase (from the LLM) or the raw query becomes the
-    // embedding input, so fuzzy intent ("ấm bụng", "kiểu đồ ăn Đà Nẵng") can
-    // rank restaurants by their semantic_profile even when no taxonomy filter
-    // matches. Falls back silently when the provider/vectors are unavailable.
+    // A distilled food-only phrase (from the LLM, or a deterministic weather/
+    // comfort fallback) becomes the embedding input, so fuzzy intent ("ấm
+    // bụng", "kiểu đồ ăn Đà Nẵng", "trời mưa") can rank restaurants by their
+    // semantic_profile even when no taxonomy filter matches. Falls back
+    // silently when the provider/vectors are unavailable.
     const semanticText =
-      (intent?.semanticQuery?.trim() || body.query.trim() || '').slice(0, 200) || undefined;
+      (intent?.semanticQuery?.trim() || interpreted.semanticQuery?.trim() || body.query.trim() || '')
+        .slice(0, 200) || undefined;
     const semanticEmbedding = semanticText ? await this.resolveEmbedding(semanticText) : null;
     const filters = {
       query: interpreted.query ?? body.query,
