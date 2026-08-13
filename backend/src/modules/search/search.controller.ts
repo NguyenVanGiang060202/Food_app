@@ -44,6 +44,10 @@ interface AuthenticatedRequest {
 }
 
 const DISH_TYPE_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  // "bánh mì" is a sandwich, NOT a noodle dish — it must be matched as a whole
+  // phrase before the shorter "mì" alias fires, otherwise a "bánh mì" query is
+  // misread as `noodle` and returns hủ tiếu/bánh canh.
+  ['bánh mì', 'snack'],
   ['bún', 'bun'],
   ['mì / phở', 'noodle'],
   ['mì', 'noodle'],
@@ -623,6 +627,10 @@ export class RecommendationsController {
     const semanticText =
       (interpreted.semanticQuery?.trim() ||
         intent?.semanticQuery?.trim() ||
+        // The distilled food phrase (filler/location/taste words removed) is a
+        // much cleaner embedding input than the raw sentence: "bánh mì ngon"
+        // embeds "bánh mì", "nhóm đông nướng ngoài trời" embeds the dish phrase.
+        interpreted.query?.trim() ||
         body.query.trim() ||
         '').slice(0, 200) || undefined;
     const semanticEmbedding = semanticText ? await this.resolveEmbedding(semanticText) : null;
