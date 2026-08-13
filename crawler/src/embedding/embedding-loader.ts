@@ -25,9 +25,18 @@ import { EmbeddingProvider, OpenAICompatibleEmbeddingProvider } from './embeddin
 
 const EMBED_MAX_REVIEWS = 4;
 const EMBED_REVIEW_EXCERPT_LENGTH = 110;
+// Local/self-hosted embedding servers (Ollama etc.) can't take unlimited
+// parallel requests; cap the worker pool so uploads stay stable.
+const EMBED_CONCURRENCY = clampInt(process.env.EMBEDDING_CONCURRENCY, 4, 1, 32);
 
 const truncate = (text: string, max: number): string =>
   text.length > max ? `${text.slice(0, max)}…` : text;
+
+function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const value = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
 
 export interface EmbeddingSummary {
   scanned: number;
@@ -236,8 +245,11 @@ export class EmbeddingLoader {
       const bounded = limit > 0 && targets.length > limit ? targets.slice(0, limit) : targets;
 
       if (!dryRun && provider !== null) {
-        await Promise.all(
-          bounded.map(async (target) => {
+        let cursor = 0;
+        const worker = async (): Promise<void> => {
+          while (cursor < bounded.length) {
+            const target = bounded[cursor];
+            cursor += 1;
             const vector = await provider.generateEmbedding(target.document);
             await this.upsertEmbedding(target.restaurantId, model, target.documentHash, vector);
             if (target.hasExisting) {
@@ -245,8 +257,10 @@ export class EmbeddingLoader {
             } else {
               summary.embedded += 1;
             }
-          }),
-        );
+          }
+        };
+        const workers = Array.from({ length: EMBED_CONCURRENCY }, () => worker());
+        await Promise.all(workers);
       } else {
         for (const target of bounded) {
           if (target.hasExisting) {

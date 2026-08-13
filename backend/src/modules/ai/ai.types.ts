@@ -16,6 +16,7 @@ export interface AiIntent {
   openNow: boolean | null;
   distanceKm: number | null;
   summary: string | null;
+  semanticQuery: string | null;
 }
 
 export interface RawAiIntent {
@@ -28,6 +29,7 @@ export interface RawAiIntent {
   openNow?: unknown;
   distanceKm?: unknown;
   summary?: unknown;
+  semanticQuery?: unknown;
 }
 
 const firstStringOrNull = (value: unknown): string | null =>
@@ -119,5 +121,6 @@ export function normalizeAiIntent(
     openNow: normalizeBoolean(input.openNow),
     distanceKm: validNumber(input.distanceKm, 1, 60),
     summary: firstStringOrNull(input.summary)?.slice(0, 200) ?? null,
+    semanticQuery: firstStringOrNull(input.semanticQuery)?.slice(0, 200) ?? null,
   };
 }

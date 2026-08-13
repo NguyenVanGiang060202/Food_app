@@ -70,7 +70,8 @@ foreach ($migration in @(
    'database/migrations/023_embedding_run_log.sql',
    'database/migrations/024_food_attribute_taxonomy.sql',
    'database/migrations/025_reject_non_food_google_results.sql',
-   'database/migrations/026_semantic_profile.sql'
+   'database/migrations/026_semantic_profile.sql',
+   'database/migrations/027_embedding_vector_index.sql'
 )) {
   $version = [System.IO.Path]::GetFileNameWithoutExtension($migration)
   $applied = [string](docker compose exec -T postgres psql -At -U $User -d $Database -c "SELECT EXISTS (SELECT 1 FROM schema_migration WHERE version = '$version');")
@@ -88,5 +89,11 @@ foreach ($migration in @(
 # Reference data is intentionally safe to re-apply. This keeps an existing
 # installation in sync when new categories are added to the seed file.
 Invoke-SqlFile 'database/seeds/001_reference_data.sql'
+
+# The embedding HNSW index is also safe to re-apply: it skips until vectors
+# exist, then locks the column dimension and builds the index. Re-applying it
+# on every migrate means a database that recorded 027 before any embedding run
+# still gets its index automatically after `npm run embed:once`.
+Invoke-SqlFile 'database/migrations/027_embedding_vector_index.sql'
 
 Write-Host 'Database migrations are up to date.'

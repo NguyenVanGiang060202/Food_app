@@ -70,6 +70,10 @@ export interface RestaurantFilters {
   cursor?: string;
   dishTypes?: string[];
   tastes?: string[];
+  /** Semantic text kept on the recommendation cursor so a later page re-embeds the same query. */
+  semanticQuery?: string;
+  /** Query vector + active embedding model, attached internally for pgvector ranking. */
+  embedding?: { vector: number[]; model: string } | null;
 }
 export interface RestaurantPage {
   data: RestaurantSummary[];

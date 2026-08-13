@@ -72,6 +72,20 @@ export class RestaurantsRepository {
     let distanceSelect = 'NULL::double precision AS distance_meters';
     let distanceOrder = '';
     let relevanceSelect = '0::real AS relevance_score';
+    let semanticSelect = 'NULL::real AS semantic_score';
+    if (filters.embedding) {
+      const vectorLiteral = `[${filters.embedding.vector.map((value) => value.toFixed(8)).join(',')}]`;
+      const vector = add(vectorLiteral);
+      const model = add(filters.embedding.model);
+      // Scalar subquery keeps the GROUP BY unchanged and tolerates multiple
+      // hashes per (restaurant, model). The table is small (a few thousand
+      // rows), so the per-row cosine is cheap; the HNSW index still helps a
+      // future direct vector-search pre-filter.
+      semanticSelect = `(SELECT COALESCE(1 - (emb.embedding <=> ${vector}::vector), 0)
+         FROM restaurant_embedding emb
+        WHERE emb.restaurant_id = r.id AND emb.model = ${model}
+        ORDER BY emb.created_at DESC, emb.id DESC LIMIT 1) AS semantic_score`;
+    }
     if (filters.query) {
       const query = filters.query.trim();
       const normalizedQuery = query
@@ -113,7 +127,7 @@ export class RestaurantsRepository {
       ].slice(0, 6);
       const termClauses = terms.map((term) => {
         const termParam = add(`%${term}%`);
-        return `(r.normalized_name ILIKE ${termParam} OR EXISTS (SELECT 1 FROM dish term_ds WHERE term_ds.restaurant_id = r.id AND term_ds.status = 'available' AND term_ds.normalized_name ILIKE ${termParam}))`;
+        return `(r.normalized_name ILIKE ${termParam} OR EXISTS (SELECT 1 FROM dish term_ds WHERE term_ds.restaurant_id = r.id AND term_ds.status = 'available' AND term_ds.normalized_name ILIKE ${termParam}) OR COALESCE(r.semantic_profile, '') ILIKE ${termParam})`;
       });
       relevanceSelect = `GREATEST(similarity(r.name, ${exact}), similarity(r.normalized_name, ${exact})) AS relevance_score`;
       // Search through the stored normalized columns instead of calling
@@ -121,7 +135,7 @@ export class RestaurantsRepository {
       // extension is useful for migrations, but a missing extension must
       // not turn every natural-language recommendation into a 500.
       where.push(
-        `(r.name ILIKE ${p} OR r.normalized_name ILIKE ${p} OR r.normalized_name ILIKE ${normalized} OR EXISTS (SELECT 1 FROM dish ds WHERE ds.restaurant_id = r.id AND ds.status = 'available' AND (ds.name ILIKE ${p} OR ds.normalized_name ILIKE ${p} OR ds.normalized_name ILIKE ${normalized}))${termClauses.length ? ` OR ${termClauses.join(' OR ')}` : ''})`,
+        `(r.name ILIKE ${p} OR r.normalized_name ILIKE ${p} OR r.normalized_name ILIKE ${normalized} OR EXISTS (SELECT 1 FROM dish ds WHERE ds.restaurant_id = r.id AND ds.status = 'available' AND (ds.name ILIKE ${p} OR ds.normalized_name ILIKE ${p} OR ds.normalized_name ILIKE ${normalized})) OR COALESCE(r.semantic_profile, '') ILIKE ${p} OR COALESCE(r.semantic_profile, '') ILIKE ${normalized}${termClauses.length ? ` OR ${termClauses.join(' OR ')}` : ''})`,
       );
     }
     if (filters.category) {
@@ -187,12 +201,14 @@ export class RestaurantsRepository {
           ? 'r.rating DESC NULLS LAST, r.review_count DESC NULLS LAST, r.id DESC'
           : filters.sort === RestaurantSort.Newest
             ? 'r.updated_at DESC, r.id DESC'
-            : `${distanceOrder}relevance_score DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`;
+            : filters.embedding
+              ? `${distanceOrder}(COALESCE(relevance_score, 0) + 0.4 * COALESCE(semantic_score, 0)) DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`
+              : `${distanceOrder}relevance_score DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`;
     const limit = Math.min(filters.limit, 50);
     const limitParam = add(limit + 1);
     const offsetParam = offset > 0 ? add(offset) : null;
     const result = await this.database.query<SummaryRow>(
-      `SELECT r.id, r.name, l.formatted_address, ST_Y(l.coordinates::geometry) AS latitude, ST_X(l.coordinates::geometry) AS longitude, r.rating, r.review_count, r.price_level, cover.url AS cover_image_url, source.source_url, ${distanceSelect}, ${relevanceSelect}, r.updated_at,
+      `SELECT r.id, r.name, l.formatted_address, ST_Y(l.coordinates::geometry) AS latitude, ST_X(l.coordinates::geometry) AS longitude, r.rating, r.review_count, r.price_level, cover.url AS cover_image_url, source.source_url, ${distanceSelect}, ${relevanceSelect}, ${semanticSelect}, r.updated_at,
             COALESCE(json_agg(DISTINCT jsonb_build_object('slug', c.slug, 'name', c.name)) FILTER (WHERE c.id IS NOT NULL), '[]') AS categories
           FROM restaurant r JOIN location l ON l.id = r.location_id LEFT JOIN restaurant_category rc ON rc.restaurant_id = r.id LEFT JOIN category c ON c.id = rc.category_id AND c.is_active = true
           LEFT JOIN LATERAL (SELECT ri.url FROM restaurant_image ri WHERE ri.restaurant_id = r.id AND ri.is_cover = true AND ri.status = 'active' ORDER BY ri.sort_order, ri.id LIMIT 1) cover ON true

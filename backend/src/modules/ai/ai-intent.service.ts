@@ -82,7 +82,8 @@ function buildIntentSystemPrompt(allowedSlugs: ReadonlySet<string>): string {
     '  "minRating": 4.0,',
     '  "openNow": true,',
     '  "distanceKm": 5,',
-    '  "summary": "một câu tiếng Việt tóm tắt ngắn bếp hiểu người dùng muốn gì"',
+    '  "summary": "một câu tiếng Việt tóm tắt ngắn bếp hiểu người dùng muốn gì",',
+    '  "semanticQuery": "cụm từ 2-10 từ mô tả thuần món ăn để tìm kiếm ngữ nghĩa"',
     '}',
     'Rang buộc:',
     '1. categories PHẢI lấy từ danh sách slug hợp lệ sau (chọn 0-2 mục):',
@@ -95,6 +96,7 @@ function buildIntentSystemPrompt(allowedSlugs: ReadonlySet<string>): string {
     '7. openNow: true chỉ khi người dùng nói rõ đang mở/giờ này/mở cửa, còn lại null.',
     '8. distanceKm: 1-60. Nếu nói "gần tôi"/"gần đây" để 5, kết hợp vị trí để 3, còn lại null.',
     '9. summary: 1 câu tiếng Việt (ngắn gọn, tối đa ~20 từ) diễn giải bạn hiểu người dùng cần gì.',
-    '10. Trường không có thông tin để null (với mảng để []). Không suy diễn thông tin không có trong câu hỏi.',
+    '10. semanticQuery: cụm 2-10 từ tiếng Việt mô tả CHỈ món ăn/khẩu vị/nguyên liệu/cách chế biến/cảm giác khi ăn (ví dụ "bún bò huế cay đậm đà", "món nướng thanh đạm", "hải sản tươi"). KHÔNG đưa địa điểm, quận, giá, thời gian, từ khen ngợi ("ngon", "sạch"). Dùng để nhúng vector tìm quán.',
+    '11. Trường không có thông tin để null (với mảng để []). Không suy diễn thông tin không có trong câu hỏi.',
   ].join('\n');
 }

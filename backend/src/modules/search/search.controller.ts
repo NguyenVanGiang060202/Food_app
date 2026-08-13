@@ -20,6 +20,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { AuthService } from '../auth/auth.service';
 import type { AuthUser } from '../auth/auth.types';
 import { AiIntentService } from '../ai/ai-intent.service';
+import { EmbeddingService } from '../ai/embedding.service';
 import type { AiIntent } from '../ai/ai.types';
 import type { RestaurantFilters } from '../restaurants/restaurants.types';
 
@@ -482,7 +483,21 @@ export class RecommendationsController {
     private readonly restaurantsService: RestaurantsService,
     @Optional() private readonly auth?: AuthService,
     @Optional() private readonly aiIntent?: AiIntentService,
+    @Optional() private readonly embedding?: EmbeddingService,
   ) {}
+  // Embeds the food-only phrase and resolves the active stored model so the
+  // search query compares against the vectors that actually exist. Returns
+  // null (semantic path off) when the provider is unset or the DB has no
+  // vectors yet — the request then runs the structured/keyword pipeline.
+  private async resolveEmbedding(text: string): Promise<{ vector: number[]; model: string } | null> {
+    if (!this.embedding?.isEnabled()) return null;
+    const [model, vector] = await Promise.all([
+      this.embedding.activeModel(),
+      this.embedding.embed(text),
+    ]);
+    if (!model) return null;
+    return { vector, model };
+  }
   @Post()
   async recommend(@Body() body: RecommendationDto) {
     if (body.cursor) return this.recommendNextPage(body);
@@ -503,6 +518,13 @@ export class RecommendationsController {
         ...cleanTasteTerms(intent?.dishes ?? []),
       ]),
     ];
+    // A distilled food-only phrase (from the LLM) or the raw query becomes the
+    // embedding input, so fuzzy intent ("ấm bụng", "kiểu đồ ăn Đà Nẵng") can
+    // rank restaurants by their semantic_profile even when no taxonomy filter
+    // matches. Falls back silently when the provider/vectors are unavailable.
+    const semanticText =
+      (intent?.semanticQuery?.trim() || body.query.trim() || '').slice(0, 200) || undefined;
+    const semanticEmbedding = semanticText ? await this.resolveEmbedding(semanticText) : null;
     const filters = {
       query: interpreted.query ?? body.query,
       category,
@@ -521,6 +543,8 @@ export class RecommendationsController {
       ),
       tastes,
       limit: body.limit,
+      semanticQuery: semanticText,
+      embedding: semanticEmbedding ?? undefined,
     };
     // Track the exact filters that produced the returned page so a follow-up
     // (cursor) request can replay the same query without re-running the LLM.
@@ -571,11 +595,20 @@ export class RecommendationsController {
       // Drop only the free-text query and rank the remaining candidates by
       // rating. Never silently drop the filters and return unrelated
       // top-rated restaurants (e.g. Cơm tấm for a "món ngọt nóng" filter).
-      effective = { ...effective, query: undefined, sort: RestaurantSort.Rating };
+      // With a live embedding, keep ranking by semantic score instead of
+      // rating so the fuzzy intent still drives the ordering.
+      effective = {
+        ...effective,
+        query: undefined,
+        sort: effective.embedding ? RestaurantSort.Relevance : RestaurantSort.Rating,
+      };
       page = await this.restaurantsService.list(effective);
     }
     const snapshot: Omit<RestaurantFilters, 'limit'> = { ...effective };
     delete (snapshot as { limit?: number }).limit;
+    // The vector is large (~1-2KB serialized floats) and would bloat the
+    // cursor. Re-embed the stored `semanticQuery` on replay instead.
+    delete (snapshot as { embedding?: unknown }).embedding;
     const nextOffset = page.meta.nextCursor ? decodeOffsetCursor(page.meta.nextCursor) : null;
     return {
       data: page.data.slice(0, body.limit).map((restaurant) => ({
@@ -604,8 +637,13 @@ export class RecommendationsController {
   private async recommendNextPage(body: RecommendationDto) {
     const decoded = decodeRecommendationCursor(body.cursor!);
     if (!decoded) throw new BadRequestException('Invalid recommendations cursor.');
+    const embedding =
+      decoded.filters.semanticQuery && !decoded.filters.embedding
+        ? await this.resolveEmbedding(decoded.filters.semanticQuery)
+        : decoded.filters.embedding;
     const page = await this.restaurantsService.list({
       ...decoded.filters,
+      embedding: embedding ?? undefined,
       limit: body.limit,
       cursor: encodeOffsetCursor(decoded.offset),
     });

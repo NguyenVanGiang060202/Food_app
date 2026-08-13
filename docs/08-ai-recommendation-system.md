@@ -163,6 +163,44 @@ restaurants directly, so it cannot invent candidates.
 - `POST /search/interpret` exposes the parsed filters plus an `aiSummary` the
   frontend renders as "Bếp nghe hiểu: …".
 
+### Runtime semantic search
+
+Beyond structured filters, the same LLM interpretation distills a
+`semanticQuery`: a 2–10 word Vietnamese phrase describing **only** the food —
+dishes, flavors, ingredients, preparation, and eating sensations (e.g. "bún bò
+huế cay đậm đà", "món nướng thanh đạm"). Location, price, time, and quality
+filler ("ngon", "sạch") are excluded because they are handled by deterministic
+filters, not vectors.
+
+At request time `EmbeddingService` (`backend/src/modules/ai/embedding.service.ts`):
+
+- Embeds `semanticQuery` (falling back to the raw query) through the same
+  OpenAI-compatible `/embeddings` protocol and provider model the crawler uses.
+- Resolves the **active stored model** (`SELECT ... FROM restaurant_embedding
+  GROUP BY model ORDER BY MAX(created_at) DESC`) so the backend never hard-codes
+  the document-template version and always compares against vectors that exist.
+- Caches the active model for 60 s; the query vector is not persisted.
+
+`RestaurantsRepository.list` then:
+
+- Searches `semantic_profile` in the keyword/ILIKE clauses alongside name and
+  dish terms, so a phrase can surface a restaurant even before vector ranking.
+- Computes `semantic_score` as the cosine similarity
+  (`1 - embedding <=> vector`) between the query and the restaurant's most
+  recent embedding for the active model.
+- Ranks by `relevance_score + 0.4 × semantic_score` (Relevance sort) so the
+  fuzzy intent drives ordering; explicit `distance`, `rating`, and `newest`
+  sorts ignore the semantic score.
+
+The recommendation cursor stores `semanticQuery` (not the vector) and re-embeds
+it on the next page, so pagination stays deterministic and the cursor stays
+small.
+
+**Graceful degradation:** when `EMBEDDING_*` env vars are unset, the embedding
+table/vectors are missing, or the provider fails, the semantic path turns off
+and the request uses the existing keyword/structured pipeline. Retrieval never
+depends on the embedding provider being available.
+
 ## 8. Hybrid Candidate Retrieval
 
 Candidate retrieval combines complementary methods rather than depending on a single score.
@@ -172,7 +210,7 @@ Candidate retrieval combines complementary methods rather than depending on a si
 | Keyword/full-text search       | Exact restaurant or dish names, direct terms.              | Uses normalized text and searchable document fields.   |
 | Category and attribute filters | Explicit cuisine, dietary, price, and feature constraints. | Hard filters apply before broad ranking when reliable. |
 | Geospatial search              | Nearby places and geographic boundaries.                   | Uses PostGIS and a bounded radius.                     |
-| Vector similarity              | Intent and concept similarity beyond exact keywords.       | Uses pgvector embeddings.                              |
+| Vector similarity              | Intent and concept similarity beyond exact keywords.       | Uses pgvector embeddings of the AI-written `semantic_profile`. |
 | Popularity/quality candidates  | Broad discovery with weak query intent.                    | Must not dominate relevance or distance.               |
 
 Each retrieval source returns a bounded candidate set. Candidate IDs are merged and deduplicated before ranking. The system should preserve source scores internally for evaluation but not expose unstable raw scores as a public contract.
@@ -213,6 +251,11 @@ finalScore =
 ```
 
 The actual formula and weights are configuration, not frontend code. They must be versioned and adjustable through controlled experiments.
+
+The Relevance sort currently implements the composite as
+`relevance_score + 0.4 × semantic_score` (keyword similarity from
+`pg_trgm` + cosine similarity from pgvector), with the semantic term weighted
+at 0.4. Explicit distance, rating, and newest sorts bypass the composite.
 
 | Signal                  | Description                                                         |
 | ----------------------- | ------------------------------------------------------------------- |

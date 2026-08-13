@@ -10,6 +10,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { SavedModule } from './modules/saved/saved.module';
 import { AiIntentService } from './modules/ai/ai-intent.service';
+import { EmbeddingService } from './modules/ai/embedding.service';
 
 @Module({
   imports: [DatabaseModule, CategoriesModule, AdminModule, AuthModule, SavedModule],
@@ -19,6 +20,6 @@ import { AiIntentService } from './modules/ai/ai-intent.service';
     SearchController,
     RecommendationsController,
   ],
-  providers: [RestaurantsService, RestaurantsRepository, AiIntentService],
+  providers: [RestaurantsService, RestaurantsRepository, AiIntentService, EmbeddingService],
 })
 export class AppModule {}

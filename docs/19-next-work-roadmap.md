@@ -74,12 +74,15 @@ Không cam kết tải cao, zero-downtime hoặc dữ liệu real-time.
   - Rà lại toàn bộ 3 anchor quán hiện có để đối chiếu kết quả.
 - **Đã làm:** bước sinh `restaurant_embedding` (`npm run embed:once --workspace
 crawler`, docs/05 Stage 7) từ search-document deterministic (tên/category/dish/
-  khu vực/phân khúc giá), provider OpenAI-compatible (env
-  `EMBEDDING_BASE_URL/API_KEY/MODEL`), idempotent + `--refresh`, có
-  `enrichment_log`. **Cần hoàn thiện:** chọn model/dimension thật (docs dự kiến
-  Gemini Embedding) + bật provider bằng API key khi deploy, và sau đó mới cài
-  pgvector ANN index (`restaurant_embedding` HNSW/IVFFlat) theo kích thước
-  vector thực.
+khu vực/phân khúc giá), provider OpenAI-compatible (env
+`EMBEDDING_BASE_URL/API_KEY/MODEL`), idempotent + `--refresh`, có
+`enrichment_log`. **Đã làm:** migration `027_embedding_vector_index.sql` cài
+HNSW index (`vector_cosine_ops`) — idempotent, được re-apply mỗi lần
+`npm run db:migrate`, tự khoá cột `embedding` theo kích thước vector thực khi
+đã có dữ liệu, nên không cần chốt dimension trước. **Cần hoàn thiện:** chọn
+model/dimension thật (docs dự kiến Gemini Embedding) + bật provider bằng API
+key khi deploy (`EMBEDDING_*`), chạy `npm run embed:once` để có vectors rồi
+chạy `npm run db:migrate` để build index.
 
 ### P0.2 “Hỏi bếp” chuyển từ tìm kiếm theo luật sang hiểu ý định (đã làm, cần key khi deploy)
 
