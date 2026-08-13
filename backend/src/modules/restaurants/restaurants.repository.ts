@@ -71,8 +71,10 @@ export class RestaurantsRepository {
     };
     let distanceSelect = 'NULL::double precision AS distance_meters';
     let distanceOrder = '';
-    let relevanceSelect = '0::real AS relevance_score';
-    let semanticSelect = 'NULL::real AS semantic_score';
+    let relevanceExpr = '0::real';
+    let semanticExpr = 'NULL::real';
+    let relevanceSelect = `${relevanceExpr} AS relevance_score`;
+    let semanticSelect = `${semanticExpr} AS semantic_score`;
     if (filters.embedding) {
       const vectorLiteral = `[${filters.embedding.vector.map((value) => value.toFixed(8)).join(',')}]`;
       const vector = add(vectorLiteral);
@@ -81,10 +83,11 @@ export class RestaurantsRepository {
       // hashes per (restaurant, model). The table is small (a few thousand
       // rows), so the per-row cosine is cheap; the HNSW index still helps a
       // future direct vector-search pre-filter.
-      semanticSelect = `(SELECT COALESCE(1 - (emb.embedding <=> ${vector}::vector), 0)
+      semanticExpr = `(SELECT COALESCE(1 - (emb.embedding <=> ${vector}::vector), 0)
          FROM restaurant_embedding emb
         WHERE emb.restaurant_id = r.id AND emb.model = ${model}
-        ORDER BY emb.created_at DESC, emb.id DESC LIMIT 1) AS semantic_score`;
+        ORDER BY emb.created_at DESC, emb.id DESC LIMIT 1)`;
+      semanticSelect = `${semanticExpr} AS semantic_score`;
     }
     if (filters.query) {
       const query = filters.query.trim();
@@ -129,7 +132,8 @@ export class RestaurantsRepository {
         const termParam = add(`%${term}%`);
         return `(r.normalized_name ILIKE ${termParam} OR EXISTS (SELECT 1 FROM dish term_ds WHERE term_ds.restaurant_id = r.id AND term_ds.status = 'available' AND term_ds.normalized_name ILIKE ${termParam}) OR COALESCE(r.semantic_profile, '') ILIKE ${termParam})`;
       });
-      relevanceSelect = `GREATEST(similarity(r.name, ${exact}), similarity(r.normalized_name, ${exact})) AS relevance_score`;
+      relevanceExpr = `GREATEST(similarity(r.name, ${exact}), similarity(r.normalized_name, ${exact}))`;
+      relevanceSelect = `${relevanceExpr} AS relevance_score`;
       // Search through the stored normalized columns instead of calling
       // PostgreSQL's optional `unaccent` extension at request time. The
       // extension is useful for migrations, but a missing extension must
@@ -202,7 +206,7 @@ export class RestaurantsRepository {
           : filters.sort === RestaurantSort.Newest
             ? 'r.updated_at DESC, r.id DESC'
             : filters.embedding
-              ? `${distanceOrder}(COALESCE(relevance_score, 0) + 0.4 * COALESCE(semantic_score, 0)) DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`
+              ? `${distanceOrder}(COALESCE(${relevanceExpr}, 0) + 0.4 * COALESCE(${semanticExpr}, 0)) DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`
               : `${distanceOrder}relevance_score DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`;
     const limit = Math.min(filters.limit, 50);
     const limitParam = add(limit + 1);
