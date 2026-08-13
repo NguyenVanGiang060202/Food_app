@@ -518,6 +518,10 @@ export class RecommendationsController {
         ...cleanTasteTerms(intent?.dishes ?? []),
       ]),
     ];
+    // Tastes the user explicitly picked in the UI (vs. inferred from the
+    // sentence or the LLM) are intent, not decoration: they are kept when the
+    // fallback chain relaxes the inferred keyword filters.
+    const explicitTastes = body.filters?.taste ?? [];
     // A distilled food-only phrase (from the LLM) or the raw query becomes the
     // embedding input, so fuzzy intent ("ấm bụng", "kiểu đồ ăn Đà Nẵng") can
     // rank restaurants by their semantic_profile even when no taxonomy filter
@@ -596,10 +600,15 @@ export class RecommendationsController {
       // rating. Never silently drop the filters and return unrelated
       // top-rated restaurants (e.g. Cơm tấm for a "món ngọt nóng" filter).
       // With a live embedding, keep ranking by semantic score instead of
-      // rating so the fuzzy intent still drives the ordering.
+      // rating so the fuzzy intent still drives the ordering. The inferred
+      // taste words ("cay đậm đà") are AND-ed in the repository and usually
+      // match nothing on their own, so they are dropped here too — the query
+      // vector already encodes them, and only explicitly chosen UI tastes
+      // stay respected.
       effective = {
         ...effective,
         query: undefined,
+        tastes: effective.embedding ? explicitTastes : effective.tastes,
         sort: effective.embedding ? RestaurantSort.Relevance : RestaurantSort.Rating,
       };
       page = await this.restaurantsService.list(effective);
