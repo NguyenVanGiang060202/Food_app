@@ -46,7 +46,6 @@ export class OpenAICompatibleEmbeddingProvider implements EmbeddingProvider {
         body: JSON.stringify({
           model,
           input,
-          encoding_format: 'float',
           ...(dimensions !== undefined ? { dimensions } : {}),
         }),
         signal: controller.signal,

@@ -55,7 +55,6 @@ export class EmbeddingService {
         body: JSON.stringify({
           model: this.model,
           input: text,
-          encoding_format: 'float',
           ...(this.dimensions !== null ? { dimensions: this.dimensions } : {}),
         }),
         signal: controller.signal,

@@ -61,7 +61,6 @@ test('embed posts an OpenAI-compatible /embeddings request and returns the vecto
   const server = await startEmbeddingServer((body) => {
     assert.equal(body.model, 'bge-m3');
     assert.equal(body.input, 'bún bò huế cay đậm đà');
-    assert.equal(body.encoding_format, 'float');
   });
   try {
     await withEmbeddingEnv(
@@ -185,8 +184,15 @@ test('activeModel degrades to null when the embedding table is missing', async (
   assert.equal(await service.activeModel(), null);
 });
 
+type EmbeddingRequestBody = {
+  model: string;
+  input: string;
+  encoding_format?: string;
+  dimensions?: number;
+};
+
 function startEmbeddingServer(
-  onBody: (body: { model: string; input: string; encoding_format?: string; dimensions?: number }) => void,
+  onBody: (body: EmbeddingRequestBody) => void,
   options: { status?: number } = {},
 ): Promise<{ port: number; close: () => void; respondWith: (payload: unknown) => void }> {
   let pendingResponse: unknown = null;
@@ -196,17 +202,24 @@ function startEmbeddingServer(
       payload += chunk;
     });
     request.on('end', () => {
-      if (request.headers.authorization !== 'Bearer ollama') {
-        response.writeHead(401, { 'Content-Type': 'application/json' });
-        response.end('{}');
-        return;
+      try {
+        if (request.headers.authorization !== 'Bearer ollama') {
+          response.writeHead(401, { 'Content-Type': 'application/json' });
+          response.end('{}');
+          return;
+        }
+        onBody(JSON.parse(payload) as EmbeddingRequestBody);
+        const content = JSON.stringify(
+          pendingResponse ?? { data: [{ embedding: [0.1, 0.2, 0.3] }] },
+        );
+        response.writeHead(options.status ?? 200, { 'Content-Type': 'application/json' });
+        response.end(content);
+      } catch (error) {
+        // Assertions inside onBody run in the request event loop; without this
+        // catch they are swallowed and the test would pass on a false positive.
+        response.writeHead(500, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'assertion-failed', detail: String(error) }));
       }
-      onBody(JSON.parse(payload));
-      const content = JSON.stringify(
-        pendingResponse ?? { data: [{ embedding: [0.1, 0.2, 0.3] }] },
-      );
-      response.writeHead(options.status ?? 200, { 'Content-Type': 'application/json' });
-      response.end(content);
     });
   });
   return new Promise((resolve) => {
