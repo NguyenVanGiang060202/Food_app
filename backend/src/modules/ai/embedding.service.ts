@@ -95,7 +95,7 @@ export class EmbeddingService {
         `SELECT model
            FROM restaurant_embedding
           GROUP BY model
-          ORDER BY MAX(created_at) DESC, MIN(id) DESC
+          ORDER BY MAX(created_at) DESC, MIN(id::text) DESC
           LIMIT 1`,
       );
       model = result.rows[0]?.model ?? null;
