@@ -148,6 +148,74 @@ test('cold weather maps to hot comfort food instead of the "mát" taste', async 
   assert.equal(calls[0].semanticQuery, 'món nóng ấm bụng');
 });
 
+test('hot weather maps to cold/refreshing food instead of the "nóng" taste', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('cool')]);
+    },
+  };
+  const controller = new RecommendationsController(databaseService as never);
+
+  await controller.recommend({ query: 'trời đang nóng, tìm gì đó phù hợp gần đây cho tôi', limit: 5 });
+
+  assert.deepEqual(calls[0].tastes, ['mát']);
+  assert.equal(calls[0].semanticQuery, 'món mát lạnh');
+});
+
+test('hot weather wins over the LLM reading the word "nóng" as hot food', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('cool')]);
+    },
+  };
+  const aiIntent = {
+    isEnabled: () => true,
+    interpret: async () => ({
+      categories: [],
+      dishes: [],
+      tastes: ['nóng', 'phù hợp'],
+      district: null,
+      priceLevel: null,
+      minRating: null,
+      openNow: null,
+      distanceKm: null,
+      summary: 'Bếp hiểu trời đang nóng.',
+      semanticQuery: 'món ăn cho thời tiết nóng',
+    }),
+  };
+  const controller = new RecommendationsController(
+    databaseService as never,
+    undefined,
+    aiIntent as never,
+  );
+
+  await controller.recommend({ query: 'trời nóng, tìm gì đó phù hợp gần đây cho tôi', limit: 5 });
+
+  // Deterministic weather reading ("mát") wins; the LLM's "nóng" + "phù hợp"
+  // are dropped so they cannot AND into a filter that matches nothing.
+  assert.deepEqual(calls[0].tastes, ['mát']);
+  assert.equal(calls[0].semanticQuery, 'món mát lạnh');
+});
+
+test('solar heat phrases like "nắng nóng" also map to cold food', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('cool')]);
+    },
+  };
+  const controller = new RecommendationsController(databaseService as never);
+
+  await controller.recommend({ query: 'trời nắng nóng quá, quán nào có kem gần đây', limit: 5 });
+
+  assert.deepEqual(calls[0].tastes, ['mát']);
+});
+
 test('recommendation uses the LLM intent when the AI service is enabled', async () => {
   const calls: Array<Record<string, unknown>> = [];
   const databaseService = {

@@ -33,6 +33,8 @@ interface InterpretedFilters {
   tastes: string[];
   /** Deterministic fallback for the embedding input when the LLM is offline. */
   semanticQuery?: string;
+  /** Weather-derived comfort taste ("nóng" for rain/cold, "mát" for heat). */
+  comfortTaste?: string;
   /** The query reduced to meaningful food terms only (filler/location/taste words removed). */
   query?: string;
 }
@@ -214,10 +216,13 @@ const TASTE_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['tươi', 'tươi'],
 ];
 
-// Weather/situation words that imply "comfort food" (hot, hearty dishes) even
-// though the user never names a taste. "Trời mưa" → "món nóng". Kept separate
-// from TASTE_ALIASES so the taste stays AND-able as an exact attribute.
+// Weather words that imply a comfort-food direction without the user naming a
+// taste. Cold/rainy weather → hot hearty dishes ("trời mưa" → "nóng"); hot/sunny
+// weather → cold, refreshing dishes ("trời nóng" → "mát"). Kept separate from
+// TASTE_ALIASES so the weather reading wins ("trời nóng" must never become the
+// hot-food taste "nóng") and the taste stays AND-able as an exact attribute.
 const WEATHER_COMFORT_PHRASES: ReadonlyArray<readonly [string, string]> = [
+  // Cold / rainy → hot comfort food.
   ['trời mưa', 'nóng'],
   ['mưa rét', 'nóng'],
   ['trời lạnh', 'nóng'],
@@ -226,7 +231,29 @@ const WEATHER_COMFORT_PHRASES: ReadonlyArray<readonly [string, string]> = [
   ['se lạnh', 'nóng'],
   ['mùa mưa', 'nóng'],
   ['gió lạnh', 'nóng'],
+  // Hot / sunny → cold, refreshing food. Longer phrases first so compound
+  // readings like "trời nắng nóng" are consumed whole before a shorter phrase
+  // leaves a stray "nóng" behind (which TASTE_ALIASES would read as hot food).
+  ['trời đang nóng', 'mát'],
+  ['trời nắng nóng', 'mát'],
+  ['thời tiết nóng', 'mát'],
+  ['nắng nóng', 'mát'],
+  ['nóng bức', 'mát'],
+  ['nóng nực', 'mát'],
+  ['nắng gắt', 'mát'],
+  ['oi bức', 'mát'],
+  ['trời nóng', 'mát'],
+  ['trời nắng', 'mát'],
+  ['trời oi', 'mát'],
 ];
+
+// Semantic phrase embedded for a weather-derived comfort taste. "Mát" must not
+// reuse the hot-food template ("món mát ấm bụng" is contradictory), so it gets
+// its own cold/refreshing phrasing.
+const COMFORT_SEMANTIC_QUERY: Readonly<Record<string, string>> = {
+  nóng: 'món nóng ấm bụng',
+  mát: 'món mát lạnh',
+};
 
 const FILLER_WORDS: readonly string[] = [
   'tìm',
@@ -359,9 +386,34 @@ const NON_TASTE_WORDS = new Set([
   'ok',
   'đãi',
   'tiết kiệm',
+  'phù hợp',
+  'thích hợp',
+  'hợp',
+  'thời tiết',
+  'đang',
 ]);
 const cleanTasteTerms = (terms: string[]): string[] =>
   terms.filter((term) => !NON_TASTE_WORDS.has(term.toLocaleLowerCase('vi-VN')));
+
+// Merge explicit (UI-picked) + deterministic + LLM tastes. When a weather
+// phrase picked a comfort direction, that reading wins: drop the LLM's
+// opposite temperature ("trời nóng" → deterministic "mát" must not be AND-ed
+// with the LLM's "nóng", which would match nothing) while keeping every other
+// inferred taste.
+const mergeComfortTastes = (
+  deterministic: string[],
+  intent: AiIntent | null,
+  comfortTaste: string | undefined,
+  explicit: string[] = [],
+): string[] => {
+  const opposite =
+    comfortTaste === 'mát' ? 'nóng' : comfortTaste === 'nóng' ? 'mát' : undefined;
+  const intentTastes = cleanTasteTerms([
+    ...(intent?.tastes ?? []),
+    ...(intent?.dishes ?? []),
+  ]).filter((taste) => taste !== opposite);
+  return [...new Set([...explicit, ...deterministic, ...intentTastes])];
+};
 
 function interpretQuery(query: string): InterpretedFilters {
   const normalized = query.toLocaleLowerCase('vi-VN');
@@ -401,9 +453,10 @@ function interpretQuery(query: string): InterpretedFilters {
     }
   }
   const tastes: string[] = [];
-  // "Trời mưa"/"trời lạnh" imply comfort food without naming a taste. Run
-  // BEFORE TASTE_ALIASES so "trời trở lạnh" is consumed as a weather phrase
-  // instead of "lạnh" → "mát" (cold drinks), which would be the wrong signal.
+  // Weather words ("trời mưa", "trời nóng"…) imply a comfort direction without
+  // naming a taste. Run BEFORE TASTE_ALIASES so "trời trở lạnh" is consumed as a
+  // weather phrase instead of "lạnh" → "mát" (cold drinks), and "trời nóng" is
+  // consumed as "mát" (cold food) instead of "nóng" (hot food).
   let comfortTaste: string | undefined;
   for (const [phrase, taste] of WEATHER_COMFORT_PHRASES) {
     const next = removePhrase(refined, phrase);
@@ -430,7 +483,8 @@ function interpretQuery(query: string): InterpretedFilters {
     ...(district ? { district } : {}),
     attributes,
     tastes: comfortTaste && !tastes.includes(comfortTaste) ? [...tastes, comfortTaste] : tastes,
-    ...(comfortTaste ? { semanticQuery: `món ${comfortTaste} ấm bụng` } : {}),
+    ...(comfortTaste ? { comfortTaste } : {}),
+    ...(comfortTaste ? { semanticQuery: COMFORT_SEMANTIC_QUERY[comfortTaste] } : {}),
     ...(queryTerm ? { query: queryTerm } : {}),
   };
 }
@@ -500,13 +554,7 @@ export class SearchController {
           ? { district: interpreted.district }
           : {}),
       attributes: interpreted.attributes,
-      tastes: [
-        ...new Set([
-          ...interpreted.tastes,
-          ...cleanTasteTerms(intent?.tastes ?? []),
-          ...cleanTasteTerms(intent?.dishes ?? []),
-        ]),
-      ],
+      tastes: mergeComfortTastes(interpreted.tastes, intent, interpreted.comfortTaste),
       ...(intent?.priceLevel ? { priceLevel: intent.priceLevel } : {}),
       ...(intent?.minRating ? { minRating: intent.minRating } : {}),
       ...(intent?.openNow === null || intent === null ? {} : { openNow: intent?.openNow }),
@@ -555,14 +603,12 @@ export class RecommendationsController {
     const openNow = body.filters?.openNow ?? intent?.openNow ?? undefined;
     const radiusMeters =
       body.filters?.radiusMeters ?? (intent?.distanceKm ? intent.distanceKm * 1000 : undefined);
-    const tastes = [
-      ...new Set([
-        ...(body.filters?.taste ?? []),
-        ...(interpreted.tastes ?? []),
-        ...cleanTasteTerms(intent?.tastes ?? []),
-        ...cleanTasteTerms(intent?.dishes ?? []),
-      ]),
-    ];
+    const tastes = mergeComfortTastes(
+      interpreted.tastes ?? [],
+      intent,
+      interpreted.comfortTaste,
+      body.filters?.taste ?? [],
+    );
     // Tastes the user explicitly picked in the UI (vs. inferred from the
     // sentence or the LLM) are intent, not decoration: they are kept when the
     // fallback chain relaxes the inferred keyword filters.
@@ -571,10 +617,14 @@ export class RecommendationsController {
     // comfort fallback) becomes the embedding input, so fuzzy intent ("ấm
     // bụng", "kiểu đồ ăn Đà Nẵng", "trời mưa") can rank restaurants by their
     // semantic_profile even when no taxonomy filter matches. Falls back
-    // silently when the provider/vectors are unavailable.
+    // silently when the provider/vectors are unavailable. A deterministic
+    // weather reading takes precedence over the LLM so "trời nóng" embeds the
+    // cold/refreshing phrase and not whatever temperature the LLM guessed.
     const semanticText =
-      (intent?.semanticQuery?.trim() || interpreted.semanticQuery?.trim() || body.query.trim() || '')
-        .slice(0, 200) || undefined;
+      (interpreted.semanticQuery?.trim() ||
+        intent?.semanticQuery?.trim() ||
+        body.query.trim() ||
+        '').slice(0, 200) || undefined;
     const semanticEmbedding = semanticText ? await this.resolveEmbedding(semanticText) : null;
     const filters = {
       query: interpreted.query ?? body.query,
