@@ -206,7 +206,7 @@ export class RestaurantsRepository {
           : filters.sort === RestaurantSort.Newest
             ? 'r.updated_at DESC, r.id DESC'
             : filters.embedding
-              ? `${distanceOrder}(COALESCE(${relevanceExpr}, 0) + 0.4 * COALESCE(${semanticExpr}, 0)) DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`
+              ? `${distanceOrder}(COALESCE(${relevanceExpr}, 0) + 0.7 * COALESCE(${semanticExpr}, 0)) DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`
               : `${distanceOrder}relevance_score DESC, r.rating DESC NULLS LAST, r.updated_at DESC, r.id DESC`;
     const limit = Math.min(filters.limit, 50);
     const limitParam = add(limit + 1);

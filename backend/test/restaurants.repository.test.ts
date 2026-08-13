@@ -135,7 +135,7 @@ test('list ranks by weighted relevance + semantic score when an embedding is att
   assert.ok(calls[0].values.includes('bge-m3@doc:v3'));
   assert.match(
     calls[0].text,
-    /COALESCE\(GREATEST\(similarity\(r\.name, \$\d+\), similarity\(r\.normalized_name, \$\d+\)\), 0\) \+ 0\.4 \* COALESCE\(\(SELECT/,
+    /COALESCE\(GREATEST\(similarity\(r\.name, \$\d+\), similarity\(r\.normalized_name, \$\d+\)\), 0\) \+ 0\.7 \* COALESCE\(\(SELECT/,
   );
 });
 
@@ -187,6 +187,6 @@ test('list supports pure semantic discovery without a text query', async () => {
   assert.match(calls[0].text, /AS semantic_score/);
   assert.match(
     calls[0].text,
-    /COALESCE\(0::real, 0\) \+ 0\.4 \* COALESCE\(\(SELECT/,
+    /COALESCE\(0::real, 0\) \+ 0\.7 \* COALESCE\(\(SELECT/,
   );
 });

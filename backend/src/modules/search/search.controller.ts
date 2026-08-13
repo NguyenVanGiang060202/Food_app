@@ -85,6 +85,11 @@ const CATEGORY_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['seafood', 'seafood'],
   ['tráng miệng', 'dessert'],
   ['dessert', 'dessert'],
+  ['kem', 'dessert'],
+  ['chè', 'dessert'],
+  ['bánh ngọt', 'dessert'],
+  ['bánh kem', 'dessert'],
+  ['sữa chua', 'dessert'],
 ];
 
 // Category aliases are merged with dish-type aliases so a chat prompt like
@@ -395,6 +400,11 @@ const NON_TASTE_WORDS = new Set([
   'hợp',
   'thời tiết',
   'đang',
+  'ngoài trời',
+  'ngoại trời',
+  'nhóm đông',
+  'đông người',
+  'hội bạn',
 ]);
 const cleanTasteTerms = (terms: string[]): string[] =>
   terms.filter((term) => !NON_TASTE_WORDS.has(term.toLocaleLowerCase('vi-VN')));
@@ -502,6 +512,14 @@ function firstFilterableCategory(
   // "bún bò huế" matches `bun` restaurants instead of the LLM's "noodle".
   if (interpreted.categoryFromDishType && FILTERABLE_CATEGORY_SLUGS.has(interpreted.category!)) {
     return interpreted.category;
+  }
+  // A strong non-filterable dish-type signal (nướng→bbq, lẩu→hotpot, hải sản…)
+  // means the query is really about that cuisine, not the generic category the
+  // LLM happened to guess ("snack" for a BBQ grill). Leave the category unset so
+  // the taste + semantic ranking drives the result instead of an unrelated
+  // taxonomy filter.
+  if (interpreted.category && !FILTERABLE_CATEGORY_SLUGS.has(interpreted.category)) {
+    return undefined;
   }
   if (intent && intent.categories.length) {
     const fromIntent = intent.categories.find((slug) => FILTERABLE_CATEGORY_SLUGS.has(slug));
@@ -627,10 +645,15 @@ export class RecommendationsController {
     const semanticText =
       (interpreted.semanticQuery?.trim() ||
         intent?.semanticQuery?.trim() ||
-        // The distilled food phrase (filler/location/taste words removed) is a
-        // much cleaner embedding input than the raw sentence: "bánh mì ngon"
-        // embeds "bánh mì", "nhóm đông nướng ngoài trời" embeds the dish phrase.
-        interpreted.query?.trim() ||
+        // The distilled food phrase (filler/location words removed) is a much
+        // cleaner embedding input than the raw sentence: "bánh mì ngon" embeds
+        // "bánh mì", "nhóm đông nướng ngoài trời" embeds the dish phrase. The
+        // inferred tastes are appended so a cooking method like "nướng" keeps
+        // its weight even after the SQL taste filter is relaxed away.
+        [interpreted.query, ...(tastes.length ? [tastes.join(' ')] : [])]
+          .filter(Boolean)
+          .join(' ')
+          .trim() ||
         body.query.trim() ||
         '').slice(0, 200) || undefined;
     const semanticEmbedding = semanticText ? await this.resolveEmbedding(semanticText) : null;
@@ -675,6 +698,15 @@ export class RecommendationsController {
       openNow: body.filters?.openNow !== undefined,
     };
     let effective: RestaurantFilters = filters;
+    // The user's original intent (before the fallback chain relaxes inferred
+    // filters that the current dataset cannot satisfy). The explanation still
+    // references it — guarded by the restaurant's real categories — so a page
+    // like "quán chay thanh đạm" keeps saying "nhóm vegetarian" even when the
+    // too-narrow inferred filters had to be dropped to produce results.
+    const intended = {
+      category: filters.category,
+      tastes: filters.tastes,
+    };
     let page = await this.restaurantsService.list(effective);
     if (!page.data.length && effective.district && !explicit.district) {
       effective = { ...effective, district: undefined };
@@ -750,11 +782,11 @@ export class RecommendationsController {
         explanation: this.explain(
           restaurant.categories.map((c) => c.slug),
           {
-            category: effective.category,
+            category: intended.category,
             district: effective.district,
             priceLevel: effective.priceLevel,
             openNow: effective.openNow,
-            tastes: effective.tastes,
+            tastes: intended.tastes,
             location: effective.latitude !== undefined ? true : undefined,
           },
         ),
