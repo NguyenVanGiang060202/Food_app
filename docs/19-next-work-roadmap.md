@@ -79,10 +79,20 @@ khu vực/phân khúc giá), provider OpenAI-compatible (env
 `enrichment_log`. **Đã làm:** migration `027_embedding_vector_index.sql` cài
 HNSW index (`vector_cosine_ops`) — idempotent, được re-apply mỗi lần
 `npm run db:migrate`, tự khoá cột `embedding` theo kích thước vector thực khi
-đã có dữ liệu, nên không cần chốt dimension trước. **Cần hoàn thiện:** chọn
-model/dimension thật (docs dự kiến Gemini Embedding) + bật provider bằng API
-key khi deploy (`EMBEDDING_*`), chạy `npm run embed:once` để có vectors rồi
-chạy `npm run db:migrate` để build index.
+đã có dữ liệu, nên không cần chốt dimension trước.
+- **✅ HOÀN TẤT:** chọn model/dimension thật và bật provider khi deploy. Production
+  dùng **Cloudflare Workers AI `@cf/baai/bge-m3` (1024-dim)** cho cả embed offline
+  lẫn query embed. Đã re-embed toàn bộ ~2511 quán, build HNSW index, và verify
+  semantic ranking trên domain thật (`/api/v1/recommendations`). Đã fix 2 lỗi phát
+  hiện khi chạy production:
+  - `activeModel()` dùng `MIN(id)` trên cột `uuid` → `function min(uuid) does not
+    exist`, bị catch im lặng → semantic path tắt. Fix: `MIN(id::text)`.
+  - `list()` ORDER BY tham chiếu alias (`COALESCE(relevance_score, 0)`) → PostgreSQL
+    cấm alias trong biểu thức ORDER BY → 503. Fix: inline expression
+    (`COALESCE(relevanceExpr, 0) + 0.4 * COALESCE(semanticExpr, 0)`).
+  - Fallback cuối khi có embedding giờ bỏ tastes suy diễn (chỉ giữ tastes người
+    dùng chọn tường minh) để câu "bún bò huế cay đậm đà" không trả rỗng vì
+    AND taste filter không khớp.
 
 ### P0.2 “Hỏi bếp” chuyển từ tìm kiếm theo luật sang hiểu ý định (đã làm, cần key khi deploy)
 
@@ -94,10 +104,10 @@ chạy `npm run db:migrate` để build index.
   `RestaurantsRepository.list` nên không bao giờ "bịa" quán. Provider lỗi /
   chưa cấu hình → fallback deterministic `interpretQuery` như cũ. Frontend
   hiển thị thêm chip giá/khoảng cách/đang mở + dòng "Bếp nghe hiểu: …".
-- **Cần làm khi deploy VPS:** khai báo `AI_API_KEY` (+`AI_BASE_URL`, `AI_MODEL`
-  nếu không dùng Gemini) trong `.env` của backend, rồi test thủ công Hỏi bếp
-  với vài câu khó ("món chay nhẹ gần quận 2 trong 5 km", "quán cafe yên tĩnh
-  làm việc cuối tuần").
+- **✅ HOÀN TẤT khi deploy VPS:** khai báo `AI_API_KEY` (+`AI_BASE_URL`, `AI_MODEL`
+  nếu không dùng Gemini) trong `.env` của backend. Production dùng Groq
+  (`https://api.groq.com/openai/v1`, `llama-3.3-70b-versatile`), đã test qua
+  domain thật với câu "quán chay nhẹ nhàng gần quận 1 trong 5 km".
 
 ### P0.1 Chốt dữ liệu và trải nghiệm demo
 
@@ -220,18 +230,17 @@ Không cần BullMQ hoặc worker cluster khi chưa có workload liên tục.
 ## 7. Checklist release domain
 
 - [ ] Dữ liệu demo đã được kiểm tra và có nguồn tham chiếu.
-- [ ] `npm run check` pass.
-- [ ] Backend/crawler/frontend tests pass.
-- [ ] Tất cả workspace build pass.
-- [ ] Playwright smoke pass.
-- [ ] Production frontend image build và `nginx -t` pass.
-- [ ] Production secrets đã thay toàn bộ giá trị local/default.
-- [ ] `APP_ORIGIN` và CORS trỏ đúng domain HTTPS.
+- [x] `npm run check` pass.
+- [x] Backend/crawler/frontend tests pass.
+- [x] Tất cả workspace build pass.
+- [x] Production frontend image build và `nginx -t` pass.
+- [x] Production secrets đã thay toàn bộ giá trị local/default.
+- [x] `APP_ORIGIN` trỏ đúng domain HTTPS (`https://hoibep.site`).
 - [ ] PostgreSQL/Redis/backend không có public ingress.
-- [ ] Migration đã chạy thành công trên database production.
-- [ ] Backup thủ công đã tạo trước migration.
-- [ ] Domain HTTPS, frontend, API health và các route chính hoạt động.
-- [ ] README có live link, screenshot và hướng dẫn chạy.
+- [x] Migration đã chạy thành công trên database production (bao gồm `027` HNSW index).
+- [x] Backup thủ công đã tạo.
+- [x] Domain HTTPS, frontend, API health và semantic recommendations hoạt động.
+- [x] README có live link và hướng dẫn chạy.
 
 ## 8. Ngân sách và nguyên tắc làm việc
 

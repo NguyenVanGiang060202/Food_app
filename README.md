@@ -2,6 +2,23 @@
 
 > Intelligent food and restaurant recommendation platform powered by AI, Vector Search, and Multi-Source Data Collection.
 
+## Live Demo
+
+**[https://hoibep.site](https://hoibep.site)** — production deployment on a VPS with Docker and HTTPS.
+
+Ask in natural language ("bún bò huế cay đậm đà", "quán chay nhẹ nhàng gần quận 1"), browse restaurants on a map, save favorites, and set preferences. Results link back to the original Google Maps listing.
+
+---
+
+# Features
+
+- **Hỏi bếp (Ask)**: natural-language queries parsed into structured filters by an LLM (`llama-3.3-70b-versatile` on Groq), with rule-based fallback when the provider is unavailable.
+- **Semantic search**: restaurant vectors built offline with Cloudflare Workers AI `@cf/baai/bge-m3` (1024-dim), ranked at request time by cosine similarity through a pgvector HNSW index.
+- **Hybrid ranking**: geo distance + category/dish taxonomy + taste attributes + rating + semantic similarity.
+- **Data pipeline**: bounded Google Maps Playwright crawler → validation → normalization → canonical upsert → AI enrichment (categories, dishes, semantic profiles) → deterministic embedding documents.
+- **Auth**: email/password + Google OAuth with HttpOnly session cookies; save places and personalize preferences.
+- **Provenance**: every record keeps source, confidence, and an audit trail; the UI never fabricates missing data and links back to the source.
+
 ---
 
 # Vision
@@ -221,19 +238,28 @@ Ranking should combine:
 
 # AI Usage
 
-Large Language Models are NOT used as the search engine.
+Large Language Models are NOT used as the search engine. They have two narrow roles:
 
-Instead:
+1. **Query intent parsing** — turn a natural-language prompt into structured filters
+   (`categories`, `tastes`, `district`, `priceLevel`, `openNow`, `distanceKm`). The
+   structured filters still run against the real catalog, so the system can never
+   "invent" a restaurant.
+2. **Query embedding** — embed the distilled food phrase with the same model used
+   offline for the catalog, then rank candidates by cosine similarity in pgvector.
 
 ```text
 User Query
     ?
-Hybrid Search
+LLM Intent + Query Embedding
     ?
-Top Candidates
+Structured filters + vector ranking
     ?
-LLM Explanation
+Top Candidates (real catalog rows)
 ```
+
+This keeps ranking deterministic against observed data, lowers latency and token usage,
+and degrades gracefully: if the LLM or embedding provider is unavailable, search falls
+back to the rule-based keyword/structured pipeline.
 
 This reduces latency and token usage.
 
@@ -304,8 +330,9 @@ Crawler:
 
 AI:
 
-- Gemini Flash
-- Gemini Embedding
+- Groq (LLM) — `llama-3.3-70b-versatile` for natural-language query intent parsing.
+- Cloudflare Workers AI — `@cf/baai/bge-m3` embeddings (1024-dim) for semantic search.
+- pgvector HNSW index (`vector_cosine_ops`) for approximate nearest-neighbor ranking.
 
 Deployment:
 
@@ -503,6 +530,20 @@ See [docs/09-development-rules.md](docs/09-development-rules.md#16-windows-power
 before running CLI commands. In particular, keep PowerShell commands ASCII-only, avoid
 embedding Vietnamese query text because it can hang the terminal, and use `;` instead of
 `&&` when chaining commands.
+
+---
+
+# What I would build next
+
+These are the most valuable next increments, in order:
+
+1. **More data + enrichment coverage** — crawl additional dish groups (chay, bún, phở, lẩu) and re-run enrichment so fuzzy queries like "quán chay nhẹ nhàng gần quận 1" surface a full result page instead of a single match.
+2. **Explainability with evaluation** — give each recommendation an explicit, human-readable explanation and measure it with Recall@K / NDCG@K on a labeled query set.
+3. **Recommendation quality loop** — track which suggested restaurants users actually open/save and feed that signal back into ranking weights.
+4. **Freshness** — a bounded scheduled crawl with a stale-data dashboard so operators can see how old the catalog is.
+5. **Operational basics** — scheduled PostgreSQL backups with a tested restore path, and an uptime check for the public domain.
+
+Deliberately out of scope for the MVP: MFA, multi-region, distributed rate limiting, and Kubernetes — they only make sense once the product has real traffic.
 
 ---
 
