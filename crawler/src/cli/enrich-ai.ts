@@ -17,6 +17,8 @@
 //   npm run enrich:ai --workspace crawler                 # all gaps
 //   npm run enrich:ai --workspace crawler -- --limit 300
 //   npm run enrich:ai --workspace crawler -- --dry-run
+//   npm run enrich:ai --workspace crawler -- --refresh     # rewrite existing profiles
+//   npm run enrich:ai --workspace crawler -- --refresh --limit 300
 //
 // Requires AI_API_KEY / AI_BASE_URL / AI_MODEL (same env as the backend) and a
 // migrated database (022_enrichment_provenance.sql + 026_semantic_profile.sql).
@@ -30,6 +32,9 @@ interface CategoryRow {
 interface RestaurantRow {
   id: string;
   name: string;
+  categories: string[];
+  district: string | null;
+  priceLevel: number | null;
   dishes: string[];
   reviews: string[];
 }
@@ -67,9 +72,10 @@ function clampInt(raw: string | undefined, fallback: number, min: number, max: n
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
-function parseArgs(argv: string[]): { limit: number; dryRun: boolean } {
+function parseArgs(argv: string[]): { limit: number; dryRun: boolean; refresh: boolean } {
   let limit = 0;
   let dryRun = false;
+  let refresh = false;
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--limit') {
       limit = Number(argv[index + 1]);
@@ -78,9 +84,11 @@ function parseArgs(argv: string[]): { limit: number; dryRun: boolean } {
       }
     } else if (argv[index] === '--dry-run') {
       dryRun = true;
+    } else if (argv[index] === '--refresh') {
+      refresh = true;
     }
   }
-  return { limit, dryRun };
+  return { limit, dryRun, refresh };
 }
 
 const truncate = (text: string, max: number): string =>
@@ -101,14 +109,21 @@ async function generateProfiles(
       const reviews = row.reviews.length
         ? ` review: ${row.reviews.map((review) => `"${review}"`).join('; ')}`
         : '';
-      return `${index}. ${row.name}${dishes}${reviews}`;
+      const categories = row.categories.length ? ` nhóm: ${row.categories.join(', ')}` : '';
+      const district = row.district ? ` khu vực: ${row.district}` : '';
+      const price =
+        row.priceLevel !== null && row.priceLevel !== undefined
+          ? ` phân khúc giá: ${row.priceLevel === 1 ? 'bình dân' : row.priceLevel === 2 ? 'trung bình' : row.priceLevel === 3 ? 'khá cao' : 'cao cấp'}`
+          : '';
+      return `${index}. ${row.name}${categories}${dishes}${reviews}${district}${price}`;
     })
     .join('\n');
   const system = [
     'Bạn là chuyên gia ẩm thực Việt Nam.',
-    'Với MỖI quán, viết "profile": 2-4 câu tiếng Việt tự nhiên, chỉ dựa trên thông tin được cung cấp (tên, món, review).',
+    `Với MỖI quán, viết "profile": 2-4 câu tiếng Việt tự nhiên, dựa trên tất cả thông tin được cung cấp (tên, nhóm món, món, review, khu vực, phân khúc giá).`,
     'Gồm: món chính/tinh hoa, hương vị (mặn/ngọt/cay/đậm đà...), độ no/khẩu phần, cách chế biến, điểm khách khen hoặc không gian nếu có.',
-    'KHÔNG bịa món không xuất hiện trong thông tin; không nói giá, địa chỉ, giờ mở cửa.',
+    'Nếu tên quán hoặc nhóm món đã đủ gợi ý loại đồ ăn (vd "Phở", "Bún", "Nướng", "Chay"), hãy nêu rõ đặc trưng của loại đó ngay cả khi không có danh sách món cụ thể.',
+    'KHÔNG bịa món không xuất hiện trong thông tin; không nói giá, địa chỉ, giờ mở cửa cụ thể.',
     `Đồng thời gán "category" bằng đúng một trong các slug: ${slugs.join(', ')}, nếu không rõ thì null.`,
     'Trả về JSON object duy nhất dạng {"items":[{"index":0,"profile":"...","category":"bun"}]}. Không markdown, không giải thích thêm.',
   ].join('\n');
@@ -200,7 +215,7 @@ async function generateProfiles(
 }
 
 async function main(): Promise<void> {
-  const { limit, dryRun } = parseArgs(process.argv.slice(2));
+  const { limit, dryRun, refresh } = parseArgs(process.argv.slice(2));
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     host: process.env.PGHOST ?? 'localhost',
@@ -233,7 +248,7 @@ async function main(): Promise<void> {
         .query(
           `INSERT INTO enrichment_log (run_type, model, params)
            VALUES ('profile+category:ai', $1, $2) RETURNING id`,
-          [`ai:${model}`, { limit, dryRun, batchSize: BATCH_SIZE }],
+          [`ai:${model}`, { limit, dryRun, refresh, batchSize: BATCH_SIZE }],
         )
         .then((result) => result.rows[0].id as number);
 
@@ -244,27 +259,42 @@ async function main(): Promise<void> {
     const slugSet = new Set(categories.map((category) => category.slug));
 
     let sql = `
-      SELECT r.id, r.name,
+      SELECT r.id, r.name, r.price_level, loc.district,
+        COALESCE((
+          SELECT jsonb_agg(DISTINCT c.name)
+          FROM restaurant_category rc JOIN category c ON c.id = rc.category_id
+          WHERE rc.restaurant_id = r.id AND c.is_active = true
+        ), '[]'::jsonb) AS categories,
         COALESCE((
           SELECT jsonb_agg(x.n)
           FROM (
-            SELECT d.normalized_name AS n
+            SELECT d.name AS n
             FROM dish d
             WHERE d.restaurant_id = r.id
               AND d.status = 'available'
-              AND d.normalized_name IS NOT NULL
-              AND length(trim(d.normalized_name)) > 0
+              AND d.name IS NOT NULL
+              AND length(trim(d.name)) > 0
             ORDER BY d.id
             LIMIT ${MAX_DISHES}
           ) x
         ), '[]'::jsonb) AS dishes
       FROM restaurant r
-      WHERE r.status = 'active'
-        AND (r.semantic_profile IS NULL OR btrim(r.semantic_profile) = '')
-      ORDER BY r.name`;
+      JOIN location loc ON loc.id = r.location_id
+      WHERE r.status = 'active'`;
+    if (!refresh) {
+      sql += ` AND (r.semantic_profile IS NULL OR btrim(r.semantic_profile) = '')`;
+    }
+    sql += ` ORDER BY r.name`;
     if (limit > 0) sql += ` LIMIT ${limit}`;
     const restaurants = (
-      await pool.query<{ id: string; name: string; dishes: string[] }>(sql)
+      await pool.query<{
+        id: string;
+        name: string;
+        price_level: number | null;
+        district: string | null;
+        categories: string[];
+        dishes: string[];
+      }>(sql)
     ).rows;
     if (!restaurants.length) {
       console.log(
@@ -304,6 +334,9 @@ async function main(): Promise<void> {
     const rows: RestaurantRow[] = restaurants.map((row) => ({
       id: row.id,
       name: row.name,
+      categories: row.categories ?? [],
+      district: row.district,
+      priceLevel: row.price_level,
       dishes: row.dishes ?? [],
       reviews: reviewsByRestaurant.get(row.id) ?? [],
     }));
@@ -371,13 +404,14 @@ async function main(): Promise<void> {
 
       if (!dryRun) {
         if (profileValues.length) {
+          const profileCondition = refresh ? 'TRUE' : `r.semantic_profile IS NULL OR btrim(r.semantic_profile) = ''`;
           await pool.query(
             `UPDATE restaurant r
              SET semantic_profile = v.profile, updated_at = now()
              FROM (VALUES ${profileValues.join(', ')})
                   AS v(restaurant_id, profile)
              WHERE r.id = v.restaurant_id
-               AND (r.semantic_profile IS NULL OR btrim(r.semantic_profile) = '')`,
+               AND (${profileCondition})`,
             profileParams,
           );
         }

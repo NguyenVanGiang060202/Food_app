@@ -211,7 +211,7 @@ export class EmbeddingLoader {
                     WHERE rc.restaurant_id = r.id), '[]'::jsonb
                 ) AS categories,
                 COALESCE(
-                  (SELECT jsonb_agg(DISTINCT d.normalized_name)
+                  (SELECT jsonb_agg(DISTINCT d.name)
                      FROM dish d
                     WHERE d.restaurant_id = r.id
                       AND d.status = 'available'), '[]'::jsonb
