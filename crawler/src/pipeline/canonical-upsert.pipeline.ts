@@ -1,5 +1,6 @@
 import { Pool, type PoolClient } from 'pg';
 import type { NormalizedRestaurantRecord } from './normalizer';
+import type { SourceReview } from '../types/source-record';
 
 export class CanonicalUpsertPipeline {
   private readonly pool: Pool;
@@ -24,6 +25,40 @@ export class CanonicalUpsertPipeline {
     await this.pool.query(
       `INSERT INTO data_source (code, name, base_url, is_active) VALUES ('fixture', 'Local Fixture (test only)', 'https://example.test/fixture', true) ON CONFLICT (code) DO UPDATE SET is_active = true`,
     );
+  }
+  async refreshReviews(sourceId: string, reviews: SourceReview[]): Promise<number> {
+    if (!reviews.length) return 0;
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const rows = await client.query<{ restaurant_id: string }>(
+        'SELECT restaurant_id FROM restaurant_source WHERE id = $1',
+        [sourceId],
+      );
+      const restaurantId = rows.rows[0]?.restaurant_id;
+      if (!restaurantId) throw new Error(`restaurant_source '${sourceId}' was not found.`);
+      for (const review of reviews) {
+        await client.query(
+          `INSERT INTO review (restaurant_id, restaurant_source_id, external_review_id, rating, content, reviewed_at, language_code, is_visible) VALUES ($1,$2,$3,$4,$5,$6,$7,true) ON CONFLICT (restaurant_source_id, external_review_id) DO UPDATE SET rating = EXCLUDED.rating, content = EXCLUDED.content, reviewed_at = EXCLUDED.reviewed_at, language_code = EXCLUDED.language_code, is_visible = true`,
+          [
+            restaurantId,
+            sourceId,
+            review.externalReviewId,
+            review.rating ?? null,
+            review.content ?? null,
+            review.reviewedAt ?? null,
+            review.languageCode ?? null,
+          ],
+        );
+      }
+      await client.query('COMMIT');
+      return reviews.length;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
   async hasCompletedRun(providerCode: string, query: string, location: string): Promise<boolean> {
     const result = await this.pool.query<{ exists: boolean }>(

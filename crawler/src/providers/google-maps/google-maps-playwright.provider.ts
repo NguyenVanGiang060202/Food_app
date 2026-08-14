@@ -10,6 +10,7 @@ import {
   normalizeCategorySlug,
   extractPlaceIdFromUrl,
   rejectsNonFoodPlace,
+  type ParsedPlace,
 } from './google-maps.parser';
 import { createHash } from 'node:crypto';
 
@@ -24,7 +25,7 @@ export interface GoogleMapsPlaywrightProviderOptions {
   maxReviewsPerPlace?: number;
   crawlerFactory?: (
     options: GoogleMapsCrawlerOptions,
-  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl'>;
+  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl'>;
 }
 
 export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
@@ -32,7 +33,7 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
   private readonly crawlerOptions: GoogleMapsCrawlerOptions;
   private readonly crawlerFactory: (
     options: GoogleMapsCrawlerOptions,
-  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl'>;
+  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl'>;
 
   constructor(options: GoogleMapsPlaywrightProviderOptions = {}) {
     this.crawlerOptions = {
@@ -46,6 +47,13 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
     this.crawlerFactory =
       options.crawlerFactory ??
       ((crawlerOptions) => new GoogleMapsPlaywrightCrawler(crawlerOptions));
+  }
+
+  async fetchPlaceReviewsByUrl(url: string, expectedName: string | undefined) {
+    const crawler = this.crawlerFactory({ ...this.crawlerOptions });
+    const place = await crawler.crawlPlaceByUrl(url, expectedName);
+    if (!place) return undefined;
+    return this.toRestaurantRecord(place, { query: 'place-refresh' });
   }
 
   async validateConfiguration(): Promise<void> {
@@ -64,71 +72,82 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
       if (!place.name) continue;
       if (rejectsNonFoodPlace(place.name, place.category)) continue;
 
-      const externalId = place.url
-        ? (extractPlaceIdFromUrl(place.url) ?? place.url)
-        : buildStableExternalId(place.name, place.address, place.coordinates);
-
-      const rating = parseRating(place.rating?.toString());
-      const reviewCount =
-        place.reviewCount === undefined
-          ? undefined
-          : parseReviewCount(place.reviewCount.toString());
-
-      const record: SourceRestaurantRecord = {
-        providerCode: this.providerCode,
-        externalId,
-        sourceUrl: place.url,
-        collectedAt: new Date().toISOString(),
-        name: place.name,
-        address: place.address,
-        city: input.city?.trim() || inferCity(input.location) || HCMC,
-        district: input.district?.trim() || inferDistrict(input.location),
-        countryCode: 'VN',
-        categories: place.category
-          ? [normalizeCategorySlug(place.category)].filter((value): value is string =>
-              Boolean(value),
-            )
-          : undefined,
-        rating,
-        reviewCount,
-        coordinates: place.coordinates,
-        phone: place.phone,
-        websiteUrl: place.website,
-        priceLevel: place.priceLevel,
-        openingHours: place.openingHours.length ? place.openingHours : undefined,
-        images: (place.images ?? []).map((image, index) => ({
-          ...image,
-          sortOrder: index,
-          isCover: index === 0,
-        })),
-        reviews: place.reviews.map((review) => ({
-          externalReviewId: review.externalReviewId,
-          rating: review.rating,
-          content: review.content,
-          reviewedAt: review.reviewedAt,
-          languageCode: review.languageCode,
-        })),
-        sourceMetadata: {
-          crawler: 'playwright',
-          query: query.query,
-          location: query.location ?? null,
-          extracted: {
-            rating: place.rating !== undefined,
-            reviewCount: place.reviewCount !== undefined,
-            address: place.address !== undefined,
-            phone: place.phone !== undefined,
-            website: place.website !== undefined,
-            priceLevel: place.priceLevel !== undefined,
-            openingHours: place.openingHours.length,
-            images: place.images?.length ?? 0,
-            reviews: place.reviews.length,
-            reviewedAt: place.reviews.some((review) => review.reviewedAt !== undefined),
-          },
-        },
-      };
-
+      const record = this.toRestaurantRecord(place, query, input);
+      if (!record) continue;
       yield record;
     }
+  }
+
+  private toRestaurantRecord(
+    place: ParsedPlace,
+    query: { query: string; location?: string },
+    context?: Pick<DiscoveryInput, 'city' | 'district'>,
+  ): SourceRestaurantRecord | undefined {
+    if (!place.name) return undefined;
+    if (rejectsNonFoodPlace(place.name, place.category)) return undefined;
+
+    const externalId = place.url
+      ? (extractPlaceIdFromUrl(place.url) ?? place.url)
+      : buildStableExternalId(place.name, place.address, place.coordinates);
+
+    const rating = parseRating(place.rating?.toString());
+    const reviewCount =
+      place.reviewCount === undefined
+        ? undefined
+        : parseReviewCount(place.reviewCount.toString());
+
+    return {
+      providerCode: this.providerCode,
+      externalId,
+      sourceUrl: place.url,
+      collectedAt: new Date().toISOString(),
+      name: place.name,
+      address: place.address,
+      city: context?.city?.trim() || inferCity(query.location) || HCMC,
+      district: context?.district?.trim() || inferDistrict(query.location),
+      countryCode: 'VN',
+      categories: place.category
+        ? [normalizeCategorySlug(place.category)].filter((value): value is string =>
+            Boolean(value),
+          )
+        : undefined,
+      rating,
+      reviewCount,
+      coordinates: place.coordinates,
+      phone: place.phone,
+      websiteUrl: place.website,
+      priceLevel: place.priceLevel,
+      openingHours: place.openingHours.length ? place.openingHours : undefined,
+      images: (place.images ?? []).map((image, index) => ({
+        ...image,
+        sortOrder: index,
+        isCover: index === 0,
+      })),
+      reviews: place.reviews.map((review) => ({
+        externalReviewId: review.externalReviewId,
+        rating: review.rating,
+        content: review.content,
+        reviewedAt: review.reviewedAt,
+        languageCode: review.languageCode,
+      })),
+      sourceMetadata: {
+        crawler: 'playwright',
+        query: query.query,
+        location: query.location ?? null,
+        extracted: {
+          rating: place.rating !== undefined,
+          reviewCount: place.reviewCount !== undefined,
+          address: place.address !== undefined,
+          phone: place.phone !== undefined,
+          website: place.website !== undefined,
+          priceLevel: place.priceLevel !== undefined,
+          openingHours: place.openingHours.length,
+          images: place.images?.length ?? 0,
+          reviews: place.reviews.length,
+          reviewedAt: place.reviews.some((review) => review.reviewedAt !== undefined),
+        },
+      },
+    };
   }
 }
 

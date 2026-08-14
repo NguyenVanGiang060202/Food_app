@@ -148,6 +148,94 @@ export class GoogleMapsPlaywrightCrawler {
     }
   }
 
+  // Opens a place page directly (bypasses search/discovery) and captures its
+  // up-to-date detail panel data plus reviews. Used by the review-refresh CLI
+  // to backfill reviews for places that discovery already found.
+  async crawlPlaceByUrl(
+    url: string,
+    expectedName: string | undefined,
+  ): Promise<ParsedPlace | undefined> {
+    await this.browser.start();
+    let page: Page | undefined;
+    try {
+      page = await this.browser.createPage();
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      await page.waitForTimeout(3000);
+      await this.dismissCookieConsent(page);
+      await page.waitForTimeout(2000);
+
+      try {
+        await page.waitForSelector('div[role="main"] h1', { timeout: 20_000 });
+      } catch {
+        console.error(
+          JSON.stringify({
+            event: 'place_panel_missing',
+            url,
+            message: 'Place detail panel did not appear within timeout.',
+          }),
+        );
+        return undefined;
+      }
+      await page.waitForTimeout(1500);
+
+      const details = await this.extractDetailPanelData(page);
+      if (this.isMismatchedPanel(expectedName, details.name)) {
+        console.error(
+          JSON.stringify({
+            event: 'place_panel_mismatch',
+            url,
+            expectedName,
+            panelName: details.name,
+          }),
+        );
+        return undefined;
+      }
+
+      const placeName = details.name ?? expectedName ?? 'place';
+      const reviews =
+        this.extractReviews && this.maxReviewsPerPlace > 0
+          ? await this.extractReviewsFromDetail(page, placeName)
+          : [];
+
+      return {
+        name: placeName,
+        rating: undefined,
+        reviewCount: details.reviewCount,
+        address: details.address,
+        category: undefined,
+        url,
+        phone: details.phone,
+        website: details.website,
+        priceLevel: details.priceLevel,
+        openingHours: [],
+        coordinates: parseCoordinatesFromUrl(url),
+        images: normalizeImages(details.images),
+        reviews,
+      };
+    } finally {
+      if (page) {
+        await page.close().catch((error) => {
+          console.error(
+            JSON.stringify({
+              event: 'crawler_cleanup_error',
+              resource: 'page',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        });
+      }
+      await this.browser.close().catch((error) => {
+        console.error(
+          JSON.stringify({
+            event: 'crawler_cleanup_error',
+            resource: 'browser',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      });
+    }
+  }
+
   private async enrichWithDetails(
     page: Page,
     place: ParsedPlace,
@@ -231,6 +319,46 @@ export class GoogleMapsPlaywrightCrawler {
       const reviewPanel = page.locator(SELECTORS.reviewContainer).first();
       if ((await reviewPanel.count()) === 0) return [];
 
+      const reviews = await this.collectReviewsWithScroll(page);
+      return reviews
+        .map((review) => ({
+          externalReviewId: `${placeName}:${review.externalReviewId}`,
+          rating: parseRating(review.ratingText),
+          content: review.content || undefined,
+          reviewedAt: parseReviewDate(review.date),
+          languageCode: inferLanguageCode(review.content),
+        }))
+        .filter((review) => review.content || review.rating !== undefined);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: 'review_extraction_error',
+          name: placeName,
+          message: error instanceof Error ? error.message : 'Failed to extract reviews',
+        }),
+      );
+      return [];
+    } finally {
+      await this.closeReviewPanel(page);
+    }
+  }
+
+  // Google Maps lazy-renders reviews as the panel scrolls. Keep scrolling until
+  // we collected maxReviewsPerPlace distinct reviews or the feed stopped
+  // growing, so a refresh run captures far more than the first screenful.
+  private async collectReviewsWithScroll(page: Page): Promise<
+    Array<{
+      externalReviewId: string;
+      ratingText: string;
+      content: string | undefined;
+      date: string | undefined;
+    }>
+  > {
+    const collected = new Map<string, { externalReviewId: string; ratingText: string; content: string | undefined; date: string | undefined }>();
+    const maxScrolls = this.maxReviewsPerPlace * 3 + 4;
+    let previousSize = -1;
+    let stagnantScrolls = 0;
+    for (let attempt = 0; attempt < maxScrolls; attempt += 1) {
       const reviews = await page.evaluate(
         ({ selector, limit }) => {
           const containers = Array.from(document.querySelectorAll<HTMLElement>(selector));
@@ -260,7 +388,8 @@ export class GoogleMapsPlaywrightCrawler {
             })();
             const date = dateText;
             const author =
-              container.querySelector<HTMLElement>('.d4r55, .TSUbDb')?.textContent?.trim() ?? '';
+              container.querySelector<HTMLElement>('.d4r55, .TSUbDb')?.textContent?.trim() ??
+              '';
             const stableId =
               id || `${author}|${ratingText}|${content ?? ''}|${date ?? ''}|${index}`;
             return { externalReviewId: stableId, ratingText, content, date };
@@ -269,26 +398,56 @@ export class GoogleMapsPlaywrightCrawler {
         { selector: SELECTORS.reviewContainer, limit: this.maxReviewsPerPlace },
       );
 
-      return reviews
-        .map((review) => ({
-          externalReviewId: `${placeName}:${review.externalReviewId}`,
-          rating: parseRating(review.ratingText),
-          content: review.content || undefined,
-          reviewedAt: parseReviewDate(review.date),
-          languageCode: inferLanguageCode(review.content),
-        }))
-        .filter((review) => review.content || review.rating !== undefined);
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          event: 'review_extraction_error',
-          name: placeName,
-          message: error instanceof Error ? error.message : 'Failed to extract reviews',
-        }),
-      );
-      return [];
-    } finally {
-      await this.closeReviewPanel(page);
+      let added = 0;
+      for (const review of reviews) {
+        if (!collected.has(review.externalReviewId)) {
+          collected.set(review.externalReviewId, review);
+          added += 1;
+          if (collected.size >= this.maxReviewsPerPlace) break;
+        }
+      }
+      if (collected.size >= this.maxReviewsPerPlace) break;
+
+      const grew = reviews.length > previousSize || added > 0;
+      previousSize = reviews.length;
+      if (grew) {
+        stagnantScrolls = 0;
+      } else {
+        stagnantScrolls += 1;
+        if (stagnantScrolls >= 2) break;
+      }
+
+      await this.scrollReviewFeed(page);
+      await page.waitForTimeout(900);
+    }
+    return Array.from(collected.values()).slice(0, this.maxReviewsPerPlace);
+  }
+
+  private async scrollReviewFeed(page: Page): Promise<void> {
+    try {
+      await page.evaluate(() => {
+        const main = document.querySelector('div[role="main"]');
+        const scrollables = main
+          ? Array.from(main.querySelectorAll<HTMLElement>('[style*="overflow"]'))
+          : [];
+        const candidates = [
+          main,
+          ...scrollables,
+          document.querySelector('[style*="overflow"]'),
+        ].filter((element): element is HTMLElement => Boolean(element));
+        const layer = candidates.find(
+          (element) =>
+            element.scrollHeight > element.clientHeight + 100 &&
+            (element === main || element.parentElement !== null),
+        );
+        if (layer) {
+          layer.scrollTop = layer.scrollHeight;
+          return;
+        }
+        window.scrollBy(0, 600);
+      });
+    } catch {
+      // Best-effort; extraction still works with what is already rendered.
     }
   }
 
