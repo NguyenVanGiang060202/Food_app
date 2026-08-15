@@ -254,3 +254,25 @@ main().catch((error) => {
   console.error(JSON.stringify({ event: 'review_refresh_fatal', message: String(error) }));
   process.exitCode = 1;
 });
+
+// Playwright can surface an internal assertion from the browser process on the
+// event loop after a page/browser is torn down. That kills the whole 20h run
+// unless we catch it here and turn it into a logged, retriable failure.
+process.on('uncaughtException', (error) => {
+  console.error(
+    JSON.stringify({
+      event: 'review_refresh_uncaught_exception',
+      message: error instanceof Error ? error.stack ?? error.message : String(error),
+    }),
+  );
+  process.exitCode = 2;
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(
+    JSON.stringify({
+      event: 'review_refresh_unhandled_rejection',
+      message: reason instanceof Error ? reason.stack ?? reason.message : String(reason),
+    }),
+  );
+  process.exitCode = 2;
+});

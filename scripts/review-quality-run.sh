@@ -37,6 +37,10 @@ run_compose() {
     --entrypoint "node crawler/dist/cli/$script.js" crawler "$@"
 }
 
+# Idempotent work can always be re-run after a transient browser crash; try
+# again a handful of times before giving up on the whole pipeline.
+REFRESH_MAX_ATTEMPTS="${REFRESH_MAX_ATTEMPTS:-5}"
+
 log "=== STEP 0: build crawler ==="
 docker compose --profile production build crawler
 
@@ -45,7 +49,21 @@ REVIEW_ARGS=()
 if [ -n "$REVIEW_LIMIT" ]; then
   REVIEW_ARGS+=(--limit "$REVIEW_LIMIT")
 fi
-run_compose review-refresh "${REVIEW_ARGS[@]}"
+attempt=1
+while true; do
+  log "review-refresh attempt $attempt/$REFRESH_MAX_ATTEMPTS"
+  if run_compose review-refresh "${REVIEW_ARGS[@]}"; then
+    break
+  fi
+  code=$?
+  log "review-refresh attempt $attempt failed (exit $code); retrying in 30s"
+  sleep 30
+  attempt=$((attempt + 1))
+  if [ "$attempt" -gt "$REFRESH_MAX_ATTEMPTS" ]; then
+    log "review-refresh gave up after $REFRESH_MAX_ATTEMPTS attempts"
+    exit 1
+  fi
+done
 log "review-refresh finished."
 
 log "=== STEP 2: AI semantic profiles (--refresh, all restaurants) ==="

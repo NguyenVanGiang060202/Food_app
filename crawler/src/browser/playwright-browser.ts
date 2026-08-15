@@ -10,7 +10,7 @@ export interface PlaywrightBrowserOptions {
 
 const DEFAULT_OPTIONS: Required<PlaywrightBrowserOptions> = {
   headless: true,
-  viewport: { width: 1920, height: 1080 },
+  viewport: { width: 1280, height: 800 },
   navigationTimeout: 30_000,
   actionTimeout: 15_000,
   locale: 'vi-VN',
