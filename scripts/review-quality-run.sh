@@ -16,6 +16,8 @@
 #   REVIEW_THRESHOLD              refresh places with fewer than N reviews (default 20)
 #   CRAWL_MAX_REVIEWS_PER_PLACE   reviews pulled per place, capped at 20
 #   CRAWL_CONCURRENCY             parallel browsers during review-refresh
+#   CRAWL_BROWSER_RESTART_EVERY   restart the shared browser every N places to
+#                                 shed leaked Chromium memory (default 150)
 
 set -euo pipefail
 
@@ -26,6 +28,7 @@ export CRAWL_CITY="${CRAWL_CITY:-Ho Chi Minh City}"
 export CRAWL_MAX_REVIEWS_PER_PLACE="${CRAWL_MAX_REVIEWS_PER_PLACE:-20}"
 export CRAWL_CONCURRENCY="${CRAWL_CONCURRENCY:-3}"
 export CRAWL_DELAY_MS="${CRAWL_DELAY_MS:-2500}"
+export CRAWL_BROWSER_RESTART_EVERY="${CRAWL_BROWSER_RESTART_EVERY:-150}"
 export REVIEW_REFRESH_THRESHOLD="${REVIEW_REFRESH_THRESHOLD:-20}"
 
 REVIEW_LIMIT="${REVIEW_REFRESH_LIMIT:-${REVIEW_LIMIT:-}}"

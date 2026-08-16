@@ -19,6 +19,8 @@
 //   CRAWL_MAX_REVIEWS_PER_PLACE=20  how many reviews to pull per place (caps at 20)
 //   CRAWL_DELAY_MS=2500             pause between places to avoid rate limits
 //   CRAWL_CONCURRENCY=2             parallel browsers (raise with a 20h budget)
+//   CRAWL_BROWSER_RESTART_EVERY=150 restart the shared browser every N places
+//                                   to shed leaked Chromium memory
 
 import { Pool } from 'pg';
 import { GoogleMapsPlaywrightProvider } from '../providers/google-maps/google-maps-playwright.provider';
@@ -36,6 +38,12 @@ const MAX_REVIEWS_PER_PLACE = clampInt(
   20,
   1,
   20,
+);
+const BROWSER_RESTART_EVERY = clampInt(
+  process.env.CRAWL_BROWSER_RESTART_EVERY ?? '',
+  150,
+  10,
+  1000,
 );
 
 function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
@@ -92,6 +100,8 @@ async function main(): Promise<void> {
     headless: process.env.CRAWL_HEADLESS !== 'false',
     navigationTimeout: 90_000,
     actionTimeout: 30_000,
+    reuseBrowser: true,
+    browserRestartEvery: BROWSER_RESTART_EVERY,
   });
 
   try {
@@ -146,6 +156,7 @@ async function main(): Promise<void> {
         maxReviewsPerPlace: MAX_REVIEWS_PER_PLACE,
         concurrency: CONCURRENCY,
         delayMs: DELAY_MS,
+        browserRestartEvery: BROWSER_RESTART_EVERY,
       }),
     );
 
@@ -245,6 +256,7 @@ async function main(): Promise<void> {
       }),
     );
   } finally {
+    await provider.close();
     await pipeline.close();
     await pool.end();
   }

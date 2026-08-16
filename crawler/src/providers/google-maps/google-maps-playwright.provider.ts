@@ -23,6 +23,10 @@ export interface GoogleMapsPlaywrightProviderOptions {
   actionTimeout?: number;
   headless?: boolean;
   maxReviewsPerPlace?: number;
+  /** Reuse one browser across all fetchPlaceReviewsByUrl calls. */
+  reuseBrowser?: boolean;
+  /** Restart the reused browser after this many place fetches. */
+  browserRestartEvery?: number;
   crawlerFactory?: (
     options: GoogleMapsCrawlerOptions,
   ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl'>;
@@ -34,6 +38,9 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
   private readonly crawlerFactory: (
     options: GoogleMapsCrawlerOptions,
   ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl'>;
+  private sharedCrawler:
+    | Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl'>
+    | undefined;
 
   constructor(options: GoogleMapsPlaywrightProviderOptions = {}) {
     this.crawlerOptions = {
@@ -43,6 +50,8 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
       actionTimeout: options.actionTimeout,
       headless: options.headless,
       maxReviewsPerPlace: options.maxReviewsPerPlace,
+      reuseBrowser: options.reuseBrowser,
+      browserRestartEvery: options.browserRestartEvery,
     };
     this.crawlerFactory =
       options.crawlerFactory ??
@@ -50,10 +59,18 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
   }
 
   async fetchPlaceReviewsByUrl(url: string, expectedName: string | undefined) {
-    const crawler = this.crawlerFactory({ ...this.crawlerOptions });
+    const crawler = this.sharedCrawler ?? (this.sharedCrawler = this.crawlerFactory({ ...this.crawlerOptions }));
     const place = await crawler.crawlPlaceByUrl(url, expectedName);
     if (!place) return undefined;
     return this.toRestaurantRecord(place, { query: 'place-refresh' });
+  }
+
+  async close(): Promise<void> {
+    if (this.sharedCrawler && 'close' in this.sharedCrawler) {
+      const closable = this.sharedCrawler as unknown as { close: () => Promise<void> };
+      await closable.close();
+    }
+    this.sharedCrawler = undefined;
   }
 
   async validateConfiguration(): Promise<void> {

@@ -1,4 +1,4 @@
-import type { Page, Locator } from 'playwright';
+import type { Page, Locator, BrowserContext } from 'playwright';
 import { PlaywrightBrowser } from '../../browser/playwright-browser';
 import { SELECTORS } from './selectors';
 import {
@@ -28,6 +28,15 @@ export interface GoogleMapsCrawlerOptions {
   extractDetails?: boolean;
   extractReviews?: boolean;
   maxReviewsPerPlace?: number;
+  /**
+   * Keep a single Chromium alive across crawlPlaceByUrl calls instead of
+   * launching/tearing down a browser per place. Review-refresh opens thousands
+   * of place URLs; a fresh browser per place exhausts RAM on small VPSes after
+   * a few hours. Paired with browserRestartEvery to shed leaked memory.
+   */
+  reuseBrowser?: boolean;
+  /** Restart the reused browser after this many crawlPlaceByUrl calls. */
+  browserRestartEvery?: number;
 }
 
 interface RawListItem {
@@ -50,6 +59,10 @@ export class GoogleMapsPlaywrightCrawler {
   private readonly extractDetails: boolean;
   private readonly extractReviews: boolean;
   private readonly maxReviewsPerPlace: number;
+  private readonly reuseBrowser: boolean;
+  private readonly browserRestartEvery: number;
+  private crawlPlaceCalls = 0;
+  private inFlight = 0;
 
   constructor(options: GoogleMapsCrawlerOptions = {}) {
     this.browser = new PlaywrightBrowser({
@@ -62,6 +75,8 @@ export class GoogleMapsPlaywrightCrawler {
     this.extractDetails = options.extractDetails ?? true;
     this.extractReviews = options.extractReviews ?? true;
     this.maxReviewsPerPlace = Math.min(Math.max(options.maxReviewsPerPlace ?? 5, 0), 20);
+    this.reuseBrowser = options.reuseBrowser ?? false;
+    this.browserRestartEvery = Math.max(options.browserRestartEvery ?? 150, 10);
   }
 
   async crawl(target: GoogleMapsCrawlTarget): Promise<ParsedPlace[]> {
@@ -155,10 +170,63 @@ export class GoogleMapsPlaywrightCrawler {
     url: string,
     expectedName: string | undefined,
   ): Promise<ParsedPlace | undefined> {
-    await this.browser.start();
+    if (!this.reuseBrowser) {
+      // Legacy per-place browser lifecycle: one fresh browser per call.
+      await this.browser.start();
+      const result = await this.crawlPlaceByUrlOnce(url, expectedName);
+      await this.browser.close().catch((error) => {
+        console.error(
+          JSON.stringify({
+            event: 'crawler_cleanup_error',
+            resource: 'browser',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      });
+      return result;
+    }
+
+    // Reuse one browser across the whole review-refresh run. A reused Chromium
+    // still leaks memory over thousands of navigations, so restart it every
+    // browserRestartEvery calls (and whenever the browser died) to shed it.
+    // Restart only when no other worker is mid-crawl, or we'd kill a page that
+    // a concurrent worker is using.
+    this.crawlPlaceCalls += 1;
+    this.inFlight += 1;
+    try {
+      if (!this.browser.isConnected()) {
+        await this.browser.start();
+      }
+      return await this.crawlPlaceByUrlOnce(url, expectedName);
+    } finally {
+      this.inFlight -= 1;
+      if (
+        this.inFlight === 0 &&
+        (this.crawlPlaceCalls >= this.browserRestartEvery || !this.browser.isConnected())
+      ) {
+        await this.browser.close().catch((error) => {
+          console.error(
+            JSON.stringify({
+              event: 'crawler_cleanup_error',
+              resource: 'browser',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        });
+        this.crawlPlaceCalls = 0;
+      }
+    }
+  }
+
+  private async crawlPlaceByUrlOnce(
+    url: string,
+    expectedName: string | undefined,
+  ): Promise<ParsedPlace | undefined> {
+    let context: BrowserContext | undefined;
     let page: Page | undefined;
     try {
-      page = await this.browser.createPage();
+      context = await this.browser.createContext();
+      page = await this.browser.createPage(context);
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       await page.waitForTimeout(3000);
       await this.dismissCookieConsent(page);
@@ -224,15 +292,17 @@ export class GoogleMapsPlaywrightCrawler {
           );
         });
       }
-      await this.browser.close().catch((error) => {
-        console.error(
-          JSON.stringify({
-            event: 'crawler_cleanup_error',
-            resource: 'browser',
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
-      });
+      if (context) {
+        await context.close().catch((error) => {
+          console.error(
+            JSON.stringify({
+              event: 'crawler_cleanup_error',
+              resource: 'context',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        });
+      }
     }
   }
 

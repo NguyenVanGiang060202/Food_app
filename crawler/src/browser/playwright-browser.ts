@@ -67,6 +67,10 @@ export class PlaywrightBrowser {
     return this.browser !== null;
   }
 
+  isConnected(): boolean {
+    return this.browser !== null && this.browser.isConnected();
+  }
+
   private ensureStarted(): Browser {
     if (!this.browser)
       throw new Error('PlaywrightBrowser has not been started. Call start() first.');
