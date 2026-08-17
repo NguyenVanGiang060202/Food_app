@@ -166,6 +166,20 @@ export class GoogleMapsPlaywrightCrawler {
   // Opens a place page directly (bypasses search/discovery) and captures its
   // up-to-date detail panel data plus reviews. Used by the review-refresh CLI
   // to backfill reviews for places that discovery already found.
+  async close(): Promise<void> {
+    await this.browser.close().catch((error) => {
+      console.error(
+        JSON.stringify({
+          event: 'crawler_cleanup_error',
+          resource: 'browser',
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+    this.crawlPlaceCalls = 0;
+    this.inFlight = 0;
+  }
+
   async crawlPlaceByUrl(
     url: string,
     expectedName: string | undefined,

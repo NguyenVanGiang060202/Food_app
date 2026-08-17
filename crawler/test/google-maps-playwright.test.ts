@@ -258,6 +258,7 @@ test('Google Maps provider forwards the discovery limit to the crawler', async (
         async crawlPlaceByUrl() {
           return undefined;
         },
+        async close() {},
       };
     },
   });
@@ -331,6 +332,7 @@ test('Google Maps provider generates a deterministic external id when a result h
       async crawlPlaceByUrl() {
         return undefined;
       },
+      async close() {},
     }),
   });
 

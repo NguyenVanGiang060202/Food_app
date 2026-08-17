@@ -29,7 +29,7 @@ export interface GoogleMapsPlaywrightProviderOptions {
   browserRestartEvery?: number;
   crawlerFactory?: (
     options: GoogleMapsCrawlerOptions,
-  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl'>;
+  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl' | 'close'>;
 }
 
 export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
@@ -37,9 +37,9 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
   private readonly crawlerOptions: GoogleMapsCrawlerOptions;
   private readonly crawlerFactory: (
     options: GoogleMapsCrawlerOptions,
-  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl'>;
+  ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl' | 'close'>;
   private sharedCrawler:
-    | Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl'>
+    | Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl' | 'close'>
     | undefined;
 
   constructor(options: GoogleMapsPlaywrightProviderOptions = {}) {
@@ -66,9 +66,8 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
   }
 
   async close(): Promise<void> {
-    if (this.sharedCrawler && 'close' in this.sharedCrawler) {
-      const closable = this.sharedCrawler as unknown as { close: () => Promise<void> };
-      await closable.close();
+    if (this.sharedCrawler) {
+      await this.sharedCrawler.close();
     }
     this.sharedCrawler = undefined;
   }
