@@ -67,19 +67,45 @@ async function main(): Promise<void> {
   await dumpMatches(page, 'detailReviewsButton', SELECTORS.detailReviewsButton);
   await dumpMatches(page, 'reviewContainer', SELECTORS.reviewContainer);
 
-  // Try to click whichever review-ish button exists.
-  const clicked = await (async () => {
-    const btn = page.locator(SELECTORS.detailReviewsButton).first();
-    if ((await btn.count()) > 0) {
-      await btn.click({ timeout: 5_000 }).catch((err: unknown) => console.log(JSON.stringify({ event: 'click_error', message: String(err) })));
-      return true;
+  // Dump every element that looks like a reviews entry point so we can see
+  // what the current Google Maps DOM actually uses (jsaction / aria-label).
+  const candidates = await page.evaluate(() => {
+    const els = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        'button[jsaction*="pane.rating"], [aria-label*="đánh giá"], [aria-label*="review" i], span[aria-label*="review" i], span[aria-label*="đánh giá"]',
+      ),
+    );
+    return els.slice(0, 20).map((el) => ({
+      tag: el.tagName,
+      ariaLabel: el.getAttribute('aria-label'),
+      jsaction: el.getAttribute('jsaction'),
+      role: el.getAttribute('role'),
+      text: el.textContent?.trim().slice(0, 60),
+    }));
+  });
+  console.log(JSON.stringify({ event: 'dom_review_candidates', candidates }));
+
+  // Prefer the real "more reviews" button (jsaction pane.rating.moreReviews),
+  // fall back to the review-count button, never the "write a review" button.
+  const btn = page.locator('button[jsaction*="pane.rating.moreReviews"]').first();
+  const btnCount = await btn.count();
+  if (btnCount > 0) {
+    await btn.click({ timeout: 5_000 }).catch((err: unknown) => console.log(JSON.stringify({ event: 'click_error', message: String(err) })));
+  } else {
+    const reviewCountBtn = page
+      .locator('button[aria-label*="đánh giá"], button[aria-label*="review" i]')
+      .filter({ hasNotText: 'Viết' })
+      .first();
+    if ((await reviewCountBtn.count()) > 0) {
+      await reviewCountBtn.click({ timeout: 5_000 }).catch((err: unknown) => console.log(JSON.stringify({ event: 'click_error', message: String(err) })));
+    } else {
+      console.log(JSON.stringify({ event: 'dom_click_skipped' }));
     }
-    return false;
-  })();
+  }
+  const clicked = btnCount > 0;
 
   if (clicked) {
     await page.waitForTimeout(3_000);
-    await dumpMatches(page, 'after_click_detailReviewsButton', SELECTORS.detailReviewsButton);
     await dumpMatches(page, 'after_click_reviewContainer', SELECTORS.reviewContainer);
 
     // Dump the raw HTML of the review area so we can see the current class names.
