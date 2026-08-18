@@ -145,6 +145,18 @@ async function main(): Promise<void> {
     .catch((err: unknown) => `eval error: ${String(err)}`);
   console.log(JSON.stringify({ event: 'dom_rating_snippet', snippet: ratingSnippet }));
 
+  // Dump the full outerHTML of the first two review cards so we can see the
+  // exact classes for content / rating / date in the current DOM.
+  const reviewCardHtml = await page
+    .evaluate(() => {
+      const cards = Array.from(
+        document.querySelectorAll<HTMLElement>('div[data-review-id]'),
+      ).slice(0, 2);
+      return cards.map((card) => card.outerHTML.slice(0, 2_000));
+    })
+    .catch((err: unknown) => [`eval error: ${String(err)}`]);
+  console.log(JSON.stringify({ event: 'dom_review_card_html', cards: reviewCardHtml }));
+
   // Prefer the real "more reviews" button (jsaction pane.rating.moreReviews),
   // fall back to the review-count button, never the "write a review" button.
   const btn = page.locator('button[jsaction*="pane.rating.moreReviews"]').first();
