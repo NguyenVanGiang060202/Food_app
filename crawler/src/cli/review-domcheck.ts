@@ -87,6 +87,53 @@ async function main(): Promise<void> {
   });
   console.log(JSON.stringify({ event: 'dom_review_candidates', candidates }));
 
+  // Dump ALL tabs (the reviews list may now open via a "Đánh giá" tab).
+  const tabs = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll<HTMLElement>('button[role="tab"], [role="tab"]')).map((el) => ({
+      tag: el.tagName,
+      ariaLabel: el.getAttribute('aria-label'),
+      jsaction: el.getAttribute('jsaction'),
+      text: el.textContent?.trim().slice(0, 40),
+      selected: el.getAttribute('aria-selected'),
+    }));
+  });
+  console.log(JSON.stringify({ event: 'dom_all_tabs', tabs }));
+
+  // Dump every element whose text/aria-label contains "đánh giá" or a "đánh
+  // giá" review count, plus every button with jsaction mentioning rating.
+  const reviewTextEls = await page.evaluate(() => {
+    const all = Array.from(
+      document.querySelectorAll<HTMLElement>('button, span, div, a, [role="tab"]'),
+    );
+    const hits = all.filter(
+      (el) =>
+        (el.textContent?.match(/\d[\d.,]*\s*đánh giá/i) || el.textContent?.match(/đánh giá/i)) &&
+        el.children.length <= 6,
+    );
+    return hits.slice(0, 25).map((el) => ({
+      tag: el.tagName,
+      ariaLabel: el.getAttribute('aria-label'),
+      jsaction: el.getAttribute('jsaction'),
+      role: el.getAttribute('role'),
+      cls: el.className?.toString().slice(0, 60),
+      text: el.textContent?.trim().slice(0, 60),
+    }));
+  });
+  console.log(JSON.stringify({ event: 'dom_review_text_hits', hits: reviewTextEls }));
+
+  const ratingJsactionEls = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll<HTMLElement>('[jsaction*="rating"]'))
+      .slice(0, 15)
+      .map((el) => ({
+        tag: el.tagName,
+        ariaLabel: el.getAttribute('aria-label'),
+        jsaction: el.getAttribute('jsaction'),
+        cls: el.className?.toString().slice(0, 60),
+        text: el.textContent?.trim().slice(0, 60),
+      }));
+  });
+  console.log(JSON.stringify({ event: 'dom_rating_jsaction', hits: ratingJsactionEls }));
+
   // Dump raw HTML around the rating/reviews section of the detail panel so we
   // can see exactly what Google Maps renders right now.
   const ratingSnippet = await page
