@@ -40,14 +40,16 @@ async function main(): Promise<void> {
   let name: string | undefined;
 
   if (!url) {
-    const { rows } = await pool.query<{ source_url: string; name: string }>(
-      `SELECT rs.source_url, r.name
+    const { rows } = await pool.query<{ source_url: string; name: string; review_count: number }>(
+      `SELECT rs.source_url, r.name, r.review_count
        FROM restaurant_source rs JOIN restaurant r ON r.id = rs.restaurant_id
        WHERE rs.source_url IS NOT NULL
-       ORDER BY random() LIMIT 1`,
+       ORDER BY r.review_count DESC NULLS LAST, random()
+       LIMIT 1`,
     );
     url = rows[0]?.source_url;
     name = rows[0]?.name;
+    console.log(JSON.stringify({ event: 'domcheck_picked', name, reviewCount: rows[0]?.review_count }));
   }
 
   if (!url) throw new Error('No URL available.');
@@ -84,6 +86,17 @@ async function main(): Promise<void> {
     }));
   });
   console.log(JSON.stringify({ event: 'dom_review_candidates', candidates }));
+
+  // Dump raw HTML around the rating/reviews section of the detail panel so we
+  // can see exactly what Google Maps renders right now.
+  const ratingSnippet = await page
+    .evaluate(() => {
+      const panel = document.querySelector<HTMLElement>('div[role="main"]');
+      if (!panel) return '';
+      return panel.innerHTML.slice(0, 6_000);
+    })
+    .catch((err: unknown) => `eval error: ${String(err)}`);
+  console.log(JSON.stringify({ event: 'dom_rating_snippet', snippet: ratingSnippet }));
 
   // Prefer the real "more reviews" button (jsaction pane.rating.moreReviews),
   // fall back to the review-count button, never the "write a review" button.
