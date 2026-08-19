@@ -56,13 +56,40 @@ async function main(): Promise<void> {
 
   console.log(JSON.stringify({ event: 'domcheck_start', name, url }));
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ locale: 'vi-VN', viewport: { width: 1280, height: 800 } });
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--disable-blink-features=AutomationControlled'],
+  });
+  const context = await browser.newContext({
+    locale: 'vi-VN',
+    viewport: { width: 1280, height: 800 },
+  });
   const page = await context.newPage();
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90_000 });
-  await page.waitForSelector(SELECTORS.detailPanel, { timeout: 60_000 }).catch(() => {});
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    Object.defineProperty(navigator, 'languages', { get: () => ['vi-VN', 'vi'] });
+  });
 
-  await page.waitForTimeout(3_000);
+  // Google serves an inconsistent DOM across loads (anti-bot / A/B): sometimes
+  // the review tab + containers render, sometimes not. Wait longer and check
+  // periodically to distinguish slow lazy-load from a stripped-down response.
+  let loadedWithReviews = false;
+  for (let attempt = 1; attempt <= 2 && !loadedWithReviews; attempt += 1) {
+    console.log(JSON.stringify({ event: 'domcheck_attempt', attempt }));
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90_000 }).catch(() => {});
+    await page.waitForSelector(SELECTORS.detailPanel, { timeout: 60_000 }).catch(() => {});
+    for (let tick = 0; tick < 8 && !loadedWithReviews; tick += 1) {
+      await page.waitForTimeout(4_000);
+      const count = await page.locator(SELECTORS.reviewContainer).count();
+      const tabCount = await page
+        .locator('button[role="tab"]')
+        .filter({ hasText: /đánh giá|review/i })
+        .count();
+      console.log(JSON.stringify({ event: 'domcheck_tick', attempt, tick, elapsedSec: (tick + 1) * 4, containerCount: count, tabCount }));
+      if (count > 0 || tabCount > 0) loadedWithReviews = true;
+    }
+  }
   console.log(JSON.stringify({ event: 'dom_page_loaded', url: page.url() }));
 
   await dumpMatches(page, 'detailPanel', SELECTORS.detailPanel);
@@ -156,6 +183,34 @@ async function main(): Promise<void> {
     })
     .catch((err: unknown) => [`eval error: ${String(err)}`]);
   console.log(JSON.stringify({ event: 'dom_review_card_html', cards: reviewCardHtml }));
+
+  // Google lazy-renders the tabs/reviews section; scroll the panel to force it.
+  console.log(JSON.stringify({ event: 'dom_scroll_begin' }));
+  await page.evaluate(() => {
+    const main = document.querySelector('div[role="main"]');
+    const scrollables = main
+      ? Array.from(main.querySelectorAll<HTMLElement>('[style*="overflow"]'))
+      : [];
+    const targets = [main, document.querySelector('[style*="overflow"]'), ...scrollables].filter(
+      (el): el is HTMLElement => Boolean(el),
+    );
+    for (const el of targets) {
+      el.scrollTop = el.scrollHeight;
+    }
+    window.scrollBy(0, 800);
+  });
+  await page.waitForTimeout(2_000);
+
+  const postScrollTabs = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll<HTMLElement>('button[role="tab"]')).map((el) => ({
+      ariaLabel: el.getAttribute('aria-label'),
+      text: el.textContent?.trim().slice(0, 30),
+      selected: el.getAttribute('aria-selected'),
+    }));
+  });
+  console.log(JSON.stringify({ event: 'dom_post_scroll_tabs', tabs: postScrollTabs }));
+  const postScrollContainers = await page.locator(SELECTORS.reviewContainer).count();
+  console.log(JSON.stringify({ event: 'dom_post_scroll_containers', count: postScrollContainers }));
 
   // Prefer the "Bài đánh giá" tab (new UI), fall back to the legacy review
   // count button, never the "write a review" button. Wait for lazy-load first.

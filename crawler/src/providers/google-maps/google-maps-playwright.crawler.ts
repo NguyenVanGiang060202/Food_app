@@ -236,88 +236,109 @@ export class GoogleMapsPlaywrightCrawler {
     url: string,
     expectedName: string | undefined,
   ): Promise<ParsedPlace | undefined> {
-    let context: BrowserContext | undefined;
-    let page: Page | undefined;
-    try {
-      context = await this.browser.createContext();
-      page = await this.browser.createPage(context);
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      await page.waitForTimeout(3000);
-      await this.dismissCookieConsent(page);
-      await page.waitForTimeout(2000);
-
+    // Google intermittently serves a stripped-down place panel (no review
+    // count, no reviews tab, no review containers) based on session/bot flags.
+    // Retry with a FRESH context (new session) each time until reviews render
+    // or we exhaust the attempts, since reloading the same flagged session
+    // keeps returning the stripped panel.
+    const MAX_ATTEMPTS = 4;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      let context: BrowserContext | undefined;
+      let page: Page | undefined;
       try {
-        await page.waitForSelector('div[role="main"] h1', { timeout: 20_000 });
-      } catch {
-        console.error(
-          JSON.stringify({
-            event: 'place_panel_missing',
-            url,
-            message: 'Place detail panel did not appear within timeout.',
-          }),
-        );
-        return undefined;
-      }
-      await page.waitForTimeout(1500);
+        context = await this.browser.createContext();
+        page = await this.browser.createPage(context);
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await page.waitForTimeout(3000);
+        await this.dismissCookieConsent(page);
+        await page.waitForTimeout(2000);
 
-      const details = await this.extractDetailPanelData(page);
-      if (this.isMismatchedPanel(expectedName, details.name)) {
-        console.error(
-          JSON.stringify({
-            event: 'place_panel_mismatch',
-            url,
-            expectedName,
-            panelName: details.name,
-          }),
-        );
-        return undefined;
-      }
-
-      const placeName = details.name ?? expectedName ?? 'place';
-      const reviews =
-        this.extractReviews && this.maxReviewsPerPlace > 0
-          ? await this.extractReviewsFromDetail(page, placeName)
-          : [];
-
-      return {
-        name: placeName,
-        rating: undefined,
-        reviewCount: details.reviewCount,
-        address: details.address,
-        category: undefined,
-        url,
-        phone: details.phone,
-        website: details.website,
-        priceLevel: details.priceLevel,
-        openingHours: [],
-        coordinates: parseCoordinatesFromUrl(url),
-        images: normalizeImages(details.images),
-        reviews,
-      };
-    } finally {
-      if (page) {
-        await page.close().catch((error) => {
+        try {
+          await page.waitForSelector('div[role="main"] h1', { timeout: 20_000 });
+        } catch {
           console.error(
             JSON.stringify({
-              event: 'crawler_cleanup_error',
-              resource: 'page',
-              message: error instanceof Error ? error.message : String(error),
+              event: 'place_panel_missing',
+              url,
+              message: 'Place detail panel did not appear within timeout.',
             }),
           );
-        });
-      }
-      if (context) {
-        await context.close().catch((error) => {
+          return undefined;
+        }
+        await page.waitForTimeout(1500);
+
+        const details = await this.extractDetailPanelData(page);
+        if (this.isMismatchedPanel(expectedName, details.name)) {
           console.error(
             JSON.stringify({
-              event: 'crawler_cleanup_error',
-              resource: 'context',
-              message: error instanceof Error ? error.message : String(error),
+              event: 'place_panel_mismatch',
+              url,
+              expectedName,
+              panelName: details.name,
             }),
           );
-        });
+          return undefined;
+        }
+
+        const placeName = details.name ?? expectedName ?? 'place';
+        const reviews =
+          this.extractReviews && this.maxReviewsPerPlace > 0
+            ? await this.extractReviewsFromDetail(page, placeName)
+            : [];
+
+        if (reviews.length > 0 || attempt === MAX_ATTEMPTS) {
+          return {
+            name: placeName,
+            rating: undefined,
+            reviewCount: details.reviewCount,
+            address: details.address,
+            category: undefined,
+            url,
+            phone: details.phone,
+            website: details.website,
+            priceLevel: details.priceLevel,
+            openingHours: [],
+            coordinates: parseCoordinatesFromUrl(url),
+            images: normalizeImages(details.images),
+            reviews,
+          };
+        }
+
+        console.log(
+          JSON.stringify({
+            event: 'review_retry',
+            name: expectedName,
+            attempt,
+            reviewCount: details.reviewCount,
+            message: 'Panel rendered without reviews; retrying with a fresh session.',
+          }),
+        );
+      } finally {
+        if (page) {
+          await page.close().catch((error) => {
+            console.error(
+              JSON.stringify({
+                event: 'crawler_cleanup_error',
+                resource: 'page',
+                message: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          });
+        }
+        if (context) {
+          await context.close().catch((error) => {
+            console.error(
+              JSON.stringify({
+                event: 'crawler_cleanup_error',
+                resource: 'context',
+                message: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          });
+        }
       }
     }
+    return undefined;
   }
 
   private async enrichWithDetails(
@@ -393,35 +414,33 @@ export class GoogleMapsPlaywrightCrawler {
       const hasReviewContainers = async (): Promise<boolean> =>
         (await page.locator(SELECTORS.reviewContainer).count()) > 0;
 
-      // The new Google Maps UI lazy-loads reviews and opens them through the
-      // "Bài đánh giá" tab instead of the old "more reviews" button, so wait a
-      // bit for the containers to render on their own before clicking.
-      if (!(await hasReviewContainers())) {
-        const reviewsTab = page
-          .locator('button[role="tab"]')
-          .filter({ hasText: /đánh giá|review/i });
-        if ((await reviewsTab.count()) > 0) {
-          await reviewsTab
-            .first()
-            .click({ timeout: 5_000 })
-            .catch(() => {});
-        } else {
-          // Legacy layout fallback.
-          const reviewButton = page.locator(SELECTORS.detailReviewsButton).first();
-          if (
-            (await reviewButton.count()) === 0 ||
-            !(await reviewButton.isVisible({ timeout: 2_000 }))
-          ) {
-            return [];
-          }
-          await reviewButton.click();
+      // Always switch to the reviews tab when present: the overview tab only
+      // shows a handful of inline reviews, while the "Bài đánh giá" tab holds
+      // the full scrollable list. Falling back to the legacy button only when
+      // the new tab UI is not rendered.
+      const reviewsTab = page
+        .locator('button[role="tab"]')
+        .filter({ hasText: /đánh giá|review/i });
+      if ((await reviewsTab.count()) > 0) {
+        await reviewsTab
+          .first()
+          .click({ timeout: 5_000 })
+          .catch(() => {});
+      } else {
+        const reviewButton = page.locator(SELECTORS.detailReviewsButton).first();
+        if (
+          (await reviewButton.count()) === 0 ||
+          !(await reviewButton.isVisible({ timeout: 2_000 }))
+        ) {
+          return [];
         }
+        await reviewButton.click();
+      }
 
-        // Reviews lazy-render; poll up to ~20s for the containers to appear.
-        const deadline = Date.now() + 20_000;
-        while (Date.now() < deadline && !(await hasReviewContainers())) {
-          await page.waitForTimeout(1_000);
-        }
+      // Reviews lazy-render; poll up to ~20s for the containers to appear.
+      const deadline = Date.now() + 20_000;
+      while (Date.now() < deadline && !(await hasReviewContainers())) {
+        await page.waitForTimeout(1_000);
       }
 
       if (!(await hasReviewContainers())) return [];
