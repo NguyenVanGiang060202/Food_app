@@ -556,22 +556,27 @@ export class GoogleMapsPlaywrightCrawler {
   private async scrollReviewFeed(page: Page): Promise<void> {
     try {
       await page.evaluate(() => {
-        const main = document.querySelector('div[role="main"]');
-        const scrollables = main
-          ? Array.from(main.querySelectorAll<HTMLElement>('[style*="overflow"]'))
-          : [];
-        const candidates = [
-          main,
-          ...scrollables,
-          document.querySelector('[style*="overflow"]'),
-        ].filter((element): element is HTMLElement => Boolean(element));
-        const layer = candidates.find(
-          (element) =>
-            element.scrollHeight > element.clientHeight + 100 &&
-            (element === main || element.parentElement !== null),
-        );
+        const isScrollable = (element: Element | null): element is HTMLElement =>
+          Boolean(
+            element instanceof HTMLElement &&
+              element.scrollHeight > element.clientHeight + 100,
+          );
+        const findScrollable = (start: Element | null): HTMLElement | null => {
+          let el: Element | null = start;
+          while (el && el !== document.body) {
+            if (isScrollable(el)) return el;
+            el = el.parentElement;
+          }
+          return null;
+        };
+        const feed = document.querySelector('[role="feed"]');
+        const layer =
+          findScrollable(feed) ??
+          findScrollable(document.querySelector(SELECTORS.reviewContainer)) ??
+          findScrollable(document.querySelector('div[role="main"]'));
         if (layer) {
-          layer.scrollTop = layer.scrollHeight;
+          const step = Math.max(600, Math.round(layer.clientHeight * 0.8));
+          layer.scrollTop += step;
           return;
         }
         window.scrollBy(0, 600);
