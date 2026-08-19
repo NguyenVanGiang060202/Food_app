@@ -390,18 +390,41 @@ export class GoogleMapsPlaywrightCrawler {
 
   private async extractReviewsFromDetail(page: Page, placeName: string): Promise<ParsedReview[]> {
     try {
-      const reviewButton = page.locator(SELECTORS.detailReviewsButton).first();
-      if (
-        (await reviewButton.count()) === 0 ||
-        !(await reviewButton.isVisible({ timeout: 2_000 }))
-      ) {
-        return [];
-      }
-      await reviewButton.click();
-      await page.waitForTimeout(1_500);
+      const hasReviewContainers = async (): Promise<boolean> =>
+        (await page.locator(SELECTORS.reviewContainer).count()) > 0;
 
-      const reviewPanel = page.locator(SELECTORS.reviewContainer).first();
-      if ((await reviewPanel.count()) === 0) return [];
+      // The new Google Maps UI lazy-loads reviews and opens them through the
+      // "Bài đánh giá" tab instead of the old "more reviews" button, so wait a
+      // bit for the containers to render on their own before clicking.
+      if (!(await hasReviewContainers())) {
+        const reviewsTab = page
+          .locator('button[role="tab"]')
+          .filter({ hasText: /đánh giá|review/i });
+        if ((await reviewsTab.count()) > 0) {
+          await reviewsTab
+            .first()
+            .click({ timeout: 5_000 })
+            .catch(() => {});
+        } else {
+          // Legacy layout fallback.
+          const reviewButton = page.locator(SELECTORS.detailReviewsButton).first();
+          if (
+            (await reviewButton.count()) === 0 ||
+            !(await reviewButton.isVisible({ timeout: 2_000 }))
+          ) {
+            return [];
+          }
+          await reviewButton.click();
+        }
+
+        // Reviews lazy-render; poll up to ~20s for the containers to appear.
+        const deadline = Date.now() + 20_000;
+        while (Date.now() < deadline && !(await hasReviewContainers())) {
+          await page.waitForTimeout(1_000);
+        }
+      }
+
+      if (!(await hasReviewContainers())) return [];
 
       const reviews = await this.collectReviewsWithScroll(page);
       return reviews

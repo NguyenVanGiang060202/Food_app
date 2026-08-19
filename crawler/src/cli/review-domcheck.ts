@@ -157,27 +157,43 @@ async function main(): Promise<void> {
     .catch((err: unknown) => [`eval error: ${String(err)}`]);
   console.log(JSON.stringify({ event: 'dom_review_card_html', cards: reviewCardHtml }));
 
-  // Prefer the real "more reviews" button (jsaction pane.rating.moreReviews),
-  // fall back to the review-count button, never the "write a review" button.
-  const btn = page.locator('button[jsaction*="pane.rating.moreReviews"]').first();
-  const btnCount = await btn.count();
-  if (btnCount > 0) {
-    await btn.click({ timeout: 5_000 }).catch((err: unknown) => console.log(JSON.stringify({ event: 'click_error', message: String(err) })));
+  // Prefer the "Bài đánh giá" tab (new UI), fall back to the legacy review
+  // count button, never the "write a review" button. Wait for lazy-load first.
+  let clicked = false;
+  const reviewsTab = page.locator('button[role="tab"]').filter({ hasText: /đánh giá|review/i });
+  const reviewsTabCount = await reviewsTab.count();
+  if (reviewsTabCount > 0) {
+    await reviewsTab.first().click({ timeout: 5_000 }).catch((err: unknown) => console.log(JSON.stringify({ event: 'click_error', message: String(err) })));
+    clicked = true;
   } else {
-    const reviewCountBtn = page
-      .locator('button[aria-label*="đánh giá"], button[aria-label*="review" i]')
-      .filter({ hasNotText: 'Viết' })
-      .first();
-    if ((await reviewCountBtn.count()) > 0) {
-      await reviewCountBtn.click({ timeout: 5_000 }).catch((err: unknown) => console.log(JSON.stringify({ event: 'click_error', message: String(err) })));
+    const btn = page.locator('button[jsaction*="pane.rating.moreReviews"]').first();
+    const btnCount = await btn.count();
+    if (btnCount > 0) {
+      await btn.click({ timeout: 5_000 }).catch((err: unknown) => console.log(JSON.stringify({ event: 'click_error', message: String(err) })));
+      clicked = true;
     } else {
-      console.log(JSON.stringify({ event: 'dom_click_skipped' }));
+      const reviewCountBtn = page
+        .locator('button[aria-label*="đánh giá"], button[aria-label*="review" i]')
+        .filter({ hasNotText: 'Viết' })
+        .first();
+      if ((await reviewCountBtn.count()) > 0) {
+        await reviewCountBtn.click({ timeout: 5_000 }).catch((err: unknown) => console.log(JSON.stringify({ event: 'click_error', message: String(err) })));
+        clicked = true;
+      } else {
+        console.log(JSON.stringify({ event: 'dom_click_skipped' }));
+      }
     }
   }
-  const clicked = btnCount > 0;
 
   if (clicked) {
-    await page.waitForTimeout(3_000);
+    // Reviews lazy-render after switching to the reviews tab; poll up to 15s.
+    const deadline = Date.now() + 15_000;
+    let containerCount = await page.locator(SELECTORS.reviewContainer).count();
+    while (Date.now() < deadline && containerCount === 0) {
+      await page.waitForTimeout(1_000);
+      containerCount = await page.locator(SELECTORS.reviewContainer).count();
+    }
+    console.log(JSON.stringify({ event: 'after_click_container_count', count: containerCount }));
     await dumpMatches(page, 'after_click_reviewContainer', SELECTORS.reviewContainer);
 
     // Dump the raw HTML of the review area so we can see the current class names.
