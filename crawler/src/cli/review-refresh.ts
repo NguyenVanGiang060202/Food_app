@@ -175,6 +175,7 @@ async function main(): Promise<void> {
     let recordsProcessed = 0;
     let failed = 0;
     let noReviewsFound = 0;
+    let reviewsCaptured = 0;
     const heartbeat = setInterval(() => {
       console.error(
         JSON.stringify({
@@ -184,6 +185,7 @@ async function main(): Promise<void> {
           recordsProcessed,
           failed,
           noReviewsFound,
+          reviewsCaptured,
           total: candidates.length,
         }),
       );
@@ -205,6 +207,7 @@ async function main(): Promise<void> {
             continue;
           }
           placesFetched += 1;
+          reviewsCaptured += record.reviews?.length ?? 0;
 
           // Pin the record to the exact restaurant_source already in the DB so
           // the upsert targets the same row (external/review ids match) instead
@@ -253,6 +256,7 @@ async function main(): Promise<void> {
         recordsProcessed,
         failed,
         noReviewsFound,
+        reviewsCaptured,
       }),
     );
   } finally {

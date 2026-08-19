@@ -313,6 +313,8 @@ export class GoogleMapsPlaywrightCrawler {
             message: 'Panel rendered without reviews; retrying with a fresh session.',
           }),
         );
+        // Let the flagged session cool down before opening a fresh one.
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
       } finally {
         if (page) {
           await page.close().catch((error) => {
@@ -402,6 +404,8 @@ export class GoogleMapsPlaywrightCrawler {
         .toLocaleLowerCase('vi-VN')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[º°]/g, 'o')
+        .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
     const expectedKey = toKey(expectedName);
