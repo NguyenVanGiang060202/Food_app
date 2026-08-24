@@ -21,7 +21,6 @@ import { attrLabel, filterGroups, priceLevelOptions, ratingOptions } from '@/lib
 import { MapCanvas } from '@/components/site/MapCanvas';
 import {
   getRecommendations,
-  interpretSearch,
   listDishes,
   toRestaurant,
   type BackendDish,
@@ -364,21 +363,27 @@ export function AskPage() {
         },
       };
       const trendingPromise = getRecommendations(trendingPayload, controller.signal).catch(
-        () => ({ items: [] as RecommendationItem[], nextCursor: null as string | null }),
+        () => ({
+          items: [] as RecommendationItem[],
+          nextCursor: null as string | null,
+          understanding: null as InterpretedSearch | null,
+        }),
       );
       const page = await getRecommendations(payload, controller.signal);
       const trendingPage = await trendingPromise;
       const dishes = await listDishes(12, trimmed, {
         openNow: nextFilters.openNow || undefined,
       }).catch(() => []);
-      const interpretation = await interpretSearch(trimmed, controller.signal).catch(() => null);
       activePayloadRef.current = payload;
       const foundCount = page.items.length;
       setResult(page.items);
       setNextCursor(page.nextCursor);
       setTrending(trendingPage.items);
       setDishCatalog(dishes);
-      setInterpreted(interpretation);
+      // Show the exact AI intent used for retrieval. A second interpretation
+      // request could disagree with the recommendation and made the chat claim
+      // to understand something different from what it actually searched.
+      setInterpreted(page.understanding);
       setSearchContext((current) => ({ ...current, keyword: trimmed, filters: nextFilters }));
       setTurns((current) => [
         ...current,
@@ -1147,6 +1152,7 @@ function InterpretationChips({ value }: { value: InterpretedSearch | null }) {
   if (!value) return null;
   const chips = [
     value.filters.category ? `Nhóm: ${value.filters.category}` : null,
+    ...(value.filters.dishes ?? []).map((dish) => `Món: ${dish.dish}`),
     value.filters.district ? `Khu vực: ${value.filters.district}` : null,
     ...value.filters.attributes.map((attribute) => `Mục đích: ${attribute}`),
     ...(value.filters.tastes ?? []).map((taste) => `Khẩu vị: ${taste}`),

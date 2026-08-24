@@ -236,6 +236,7 @@ test('recommendation uses the LLM intent when the AI service is enabled', async 
       openNow: false,
       distanceKm: 5,
       summary: 'Bếp hiểu bạn muốn món bún.',
+      canonicalDishes: [{ dish: 'bún bò Huế', confidence: 1, evidence: 'exact' }],
     }),
   };
   const controller = new RecommendationsController(
@@ -255,8 +256,54 @@ test('recommendation uses the LLM intent when the AI service is enabled', async 
   assert.equal(calls[0].minRating, 4.4);
   assert.equal(calls[0].openNow, false);
   assert.equal(calls[0].radiusMeters, 5000);
-  assert.deepEqual(calls[0].tastes, ['nóng', 'bún bò huế']);
+  assert.deepEqual(calls[0].tastes, ['nóng']);
+  assert.deepEqual(calls[0].dishQueries, ['bún bò Huế']);
   assert.match(result.data[0].explanation ?? '', /nóng/);
+  const understanding = 'understanding' in result.meta ? result.meta.understanding : null;
+  assert.equal(understanding?.aiSummary, 'Bếp hiểu bạn muốn món bún.');
+  assert.equal(understanding?.filters.category, 'bun');
+  assert.equal(understanding?.filters.district, 'Quận 1');
+  assert.deepEqual(understanding?.filters.tastes, ['nóng']);
+  assert.deepEqual(understanding?.filters.dishes, [
+    { dish: 'bún bò Huế', confidence: 1, evidence: 'exact' },
+  ]);
+});
+
+test('dish intent is a hard menu-evidence filter and is not converted into a taste', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const databaseService = {
+    list: async (filters: Record<string, unknown>) => {
+      calls.push(filters);
+      return page([restaurant('bun-bo')]);
+    },
+  };
+  const aiIntent = {
+    isEnabled: () => true,
+    interpret: async () => ({
+      categories: ['bun'],
+      dishes: ['bún bò huế'],
+      tastes: [],
+      district: null,
+      priceLevel: null,
+      minRating: null,
+      openNow: null,
+      distanceKm: null,
+      summary: 'Bếp hiểu bạn muốn bún bò Huế.',
+      semanticQuery: 'bún bò Huế',
+      canonicalDishes: [{ dish: 'Bún bò Huế', confidence: 1, evidence: 'exact' }],
+    }),
+  };
+  const controller = new RecommendationsController(
+    databaseService as never,
+    undefined,
+    aiIntent as never,
+  );
+
+  await controller.recommend({ query: 'tìm bún bò huế', limit: 5 });
+
+  assert.deepEqual(calls[0].dishQueries, ['Bún bò Huế']);
+  assert.deepEqual(calls[0].tastes, []);
+  assert.equal(calls[0].category, 'bun');
 });
 
 test('for-you uses all saved category and price preferences and removes duplicates', async () => {

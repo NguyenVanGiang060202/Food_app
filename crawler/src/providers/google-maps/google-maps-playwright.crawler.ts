@@ -360,6 +360,7 @@ export class GoogleMapsPlaywrightCrawler {
       await page.waitForTimeout(2000);
 
       const details = await this.extractDetailPanelData(page);
+      const menuImages = await this.extractMenuImages(page);
       if (this.isMismatchedPanel(place.name, details.name)) {
         // The detail panel did not switch to the requested place. Consuming
         // its data would leak the previous place's review count, phone, etc.
@@ -372,7 +373,8 @@ export class GoogleMapsPlaywrightCrawler {
       if (details.website !== undefined) place.website = details.website;
       if (details.priceLevel !== undefined) place.priceLevel = details.priceLevel;
       if (details.address && !place.address) place.address = details.address;
-      if (details.images.length) place.images = normalizeImages(details.images);
+      const combinedImages = [...(place.images ?? []), ...details.images, ...menuImages];
+      if (combinedImages.length) place.images = normalizeImages(combinedImages);
 
       if (this.extractReviews && this.maxReviewsPerPlace > 0) {
         place.reviews = await this.extractReviewsFromDetail(page, place.name ?? 'place');
@@ -422,9 +424,7 @@ export class GoogleMapsPlaywrightCrawler {
       // shows a handful of inline reviews, while the "Bài đánh giá" tab holds
       // the full scrollable list. Falling back to the legacy button only when
       // the new tab UI is not rendered.
-      const reviewsTab = page
-        .locator('button[role="tab"]')
-        .filter({ hasText: /đánh giá|review/i });
+      const reviewsTab = page.locator('button[role="tab"]').filter({ hasText: /đánh giá|review/i });
       if ((await reviewsTab.count()) > 0) {
         await reviewsTab
           .first()
@@ -473,6 +473,39 @@ export class GoogleMapsPlaywrightCrawler {
     }
   }
 
+  /**
+   * Google sometimes exposes a dedicated Menu/Thuc don tab. Its images are
+   * stronger candidates for OCR than the general photo gallery, but the tab
+   * is optional and its labels vary by locale, so the general gallery remains
+   * the fallback source.
+   */
+  private async extractMenuImages(page: Page): Promise<Array<{ url: string; altText?: string }>> {
+    try {
+      const menuTab = page
+        .locator(SELECTORS.detailMenuTab)
+        .filter({ hasText: /menu|thực đơn|thuc don/i });
+      if ((await menuTab.count()) === 0) return [];
+      await menuTab
+        .first()
+        .click({ timeout: 5_000 })
+        .catch(() => undefined);
+      await page.waitForTimeout(900);
+      return await page.evaluate((selectors: Record<string, string>) => {
+        const panel = document.querySelector<HTMLElement>(selectors.detailPanel);
+        if (!panel) return [];
+        return Array.from(panel.querySelectorAll<HTMLImageElement>(selectors.detailImages))
+          .map((image) => ({
+            url: image.currentSrc || image.src,
+            altText: image.alt || 'Google Maps menu tab',
+          }))
+          .filter((image) => image.url.startsWith('http'))
+          .slice(0, 30);
+      }, SELECTORS);
+    } catch {
+      return [];
+    }
+  }
+
   // Google Maps lazy-renders reviews as the panel scrolls. Keep scrolling until
   // we collected maxReviewsPerPlace distinct reviews or the feed stopped
   // growing, so a refresh run captures far more than the first screenful.
@@ -484,7 +517,15 @@ export class GoogleMapsPlaywrightCrawler {
       date: string | undefined;
     }>
   > {
-    const collected = new Map<string, { externalReviewId: string; ratingText: string; content: string | undefined; date: string | undefined }>();
+    const collected = new Map<
+      string,
+      {
+        externalReviewId: string;
+        ratingText: string;
+        content: string | undefined;
+        date: string | undefined;
+      }
+    >();
     const maxScrolls = this.maxReviewsPerPlace * 3 + 4;
     let previousSize = -1;
     let stagnantScrolls = 0;
@@ -518,8 +559,7 @@ export class GoogleMapsPlaywrightCrawler {
             })();
             const date = dateText;
             const author =
-              container.querySelector<HTMLElement>('.d4r55, .TSUbDb')?.textContent?.trim() ??
-              '';
+              container.querySelector<HTMLElement>('.d4r55, .TSUbDb')?.textContent?.trim() ?? '';
             const stableId =
               id || `${author}|${ratingText}|${content ?? ''}|${date ?? ''}|${index}`;
             return { externalReviewId: stableId, ratingText, content, date };
@@ -558,8 +598,7 @@ export class GoogleMapsPlaywrightCrawler {
       await page.evaluate(() => {
         const isScrollable = (element: Element | null): element is HTMLElement =>
           Boolean(
-            element instanceof HTMLElement &&
-              element.scrollHeight > element.clientHeight + 100,
+            element instanceof HTMLElement && element.scrollHeight > element.clientHeight + 100,
           );
         const findScrollable = (start: Element | null): HTMLElement | null => {
           let el: Element | null = start;

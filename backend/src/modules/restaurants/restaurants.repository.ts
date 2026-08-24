@@ -154,6 +154,20 @@ export class RestaurantsRepository {
         `EXISTS (SELECT 1 FROM restaurant_category dt_rc JOIN category dt_c ON dt_c.id = dt_rc.category_id WHERE dt_rc.restaurant_id = r.id AND dt_c.slug = ${p} AND dt_c.is_active = true)`,
       );
     }
+    for (const dishQuery of filters.dishQueries ?? []) {
+      const normalizedDish = dishQuery
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+      const p = add(`%${dishQuery}%`);
+      const normalized = add(normalizedDish);
+      // Dish intent is a hard retrieval constraint: candidates need imported
+      // menu data or a completed menu-image extraction, never a name inference.
+      where.push(
+        `EXISTS (SELECT 1 FROM dish canonical_ds WHERE canonical_ds.restaurant_id = r.id AND canonical_ds.status = 'available' AND (canonical_ds.source IS NULL OR EXISTS (SELECT 1 FROM dish_evidence canonical_de WHERE canonical_de.dish_id = canonical_ds.id AND canonical_de.evidence_type = 'menu_image')) AND (canonical_ds.normalized_name = ${normalized} OR canonical_ds.name ILIKE ${p} OR similarity(canonical_ds.normalized_name, ${normalized}) >= 0.78))`,
+      );
+    }
     for (const taste of filters.tastes ?? []) {
       const normalizedTaste = taste
         .normalize('NFD')

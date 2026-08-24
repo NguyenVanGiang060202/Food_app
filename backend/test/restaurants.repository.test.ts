@@ -90,6 +90,28 @@ test('list matches known taste values through the dish attribute taxonomy', asyn
   assert.match(calls[0].text, /OR EXISTS \(SELECT 1 FROM dish taste_ds2/);
 });
 
+test('list requires direct available-menu evidence for canonical dish intent', async () => {
+  const calls: Array<{ text: string; values: unknown[] }> = [];
+  const database = {
+    async query<T extends object>(text: string, values: unknown[] = []) {
+      calls.push({ text, values });
+      return { rows: [], rowCount: 0 } as { rows: T[]; rowCount: number };
+    },
+  };
+  const repository = new RestaurantsRepository(database as never);
+
+  await repository.list({ dishQueries: ['Bún bò Huế'], limit: 10 });
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].text, /EXISTS \(SELECT 1 FROM dish canonical_ds/);
+  assert.match(calls[0].text, /canonical_ds\.status = 'available'/);
+  assert.match(calls[0].text, /FROM dish_evidence canonical_de/);
+  assert.match(calls[0].text, /canonical_de\.evidence_type = 'menu_image'/);
+  assert.match(calls[0].text, /canonical_ds\.normalized_name = \$\d+/);
+  assert.match(calls[0].text, /similarity\(canonical_ds\.normalized_name, \$\d+\) >= 0\.78/);
+  assert.ok(calls[0].values.includes('bun bo hue'));
+});
+
 test('list matches the semantic_profile column in keyword and per-term clauses', async () => {
   const calls: Array<{ text: string; values: unknown[] }> = [];
   const database = {

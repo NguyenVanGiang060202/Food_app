@@ -126,6 +126,46 @@ test('AiIntentService interprets and keeps only database taxonomy categories', a
   assert.equal(intent.distanceKm, 5);
 });
 
+test('AiIntentService canonicalizes an LLM dish against available menu data', async () => {
+  let call = 0;
+  const database = {
+    query: async () => {
+      call += 1;
+      if (call === 1) return { rows: [{ slug: 'bun' }] };
+      return {
+        rows: [
+          {
+            name: 'Bún bò Huế',
+            normalized_name: 'bun bo hue',
+            similarity_score: 1,
+          },
+        ],
+      };
+    },
+  };
+  const client = {
+    chatJson: async () => ({
+      categories: ['bun'],
+      dishes: ['bun bo hue'],
+      tastes: ['cay'],
+      district: null,
+      priceLevel: null,
+      minRating: null,
+      openNow: null,
+      distanceKm: null,
+      summary: 'Bếp hiểu bạn muốn bún bò Huế.',
+      semanticQuery: 'bún bò Huế cay',
+    }),
+  };
+  const service = new AiIntentService(database as never, client as never);
+
+  const intent = await service.interpret('tìm bún bò huế cay');
+
+  assert.deepEqual(intent?.canonicalDishes, [
+    { dish: 'Bún bò Huế', confidence: 1, evidence: 'exact' },
+  ]);
+});
+
 test('AiIntentService falls back to null when the provider fails', async () => {
   const database = { query: async () => ({ rows: [{ slug: 'noodle' }] }) };
   const client = {

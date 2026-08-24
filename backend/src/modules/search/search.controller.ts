@@ -43,6 +43,22 @@ interface AuthenticatedRequest {
   user?: AuthUser;
 }
 
+interface RecommendationUnderstanding {
+  query: string;
+  aiSummary: string | null;
+  filters: {
+    category?: string;
+    district?: string;
+    attributes: string[];
+    tastes: string[];
+    dishes?: Array<{ dish: string; confidence: number; evidence: string }>;
+    priceLevel?: number;
+    minRating?: number;
+    openNow?: boolean;
+    distanceKm?: number;
+  };
+}
+
 const DISH_TYPE_ALIASES: ReadonlyArray<readonly [string, string]> = [
   // "bánh mì" is a sandwich, NOT a noodle dish — it must be matched as a whole
   // phrase before the shorter "mì" alias fires, otherwise a "bánh mì" query is
@@ -422,11 +438,22 @@ const mergeComfortTastes = (
 ): string[] => {
   const opposite =
     comfortTaste === 'mát' ? 'nóng' : comfortTaste === 'nóng' ? 'mát' : undefined;
-  const intentTastes = cleanTasteTerms([
-    ...(intent?.tastes ?? []),
-    ...(intent?.dishes ?? []),
-  ]).filter((taste) => taste !== opposite);
+  const intentTastes = cleanTasteTerms(intent?.tastes ?? []).filter(
+    (taste) => taste !== opposite,
+  );
   return [...new Set([...explicit, ...deterministic, ...intentTastes])];
+};
+
+const canonicalDishQueries = (
+  intent: AiIntent | null,
+  interpreted: InterpretedFilters,
+): string[] => {
+  const canonical = (intent?.canonicalDishes ?? []).map((dish) => dish.dish).filter(Boolean);
+  if (canonical.length) return [...new Set(canonical)].slice(0, 4);
+  // When the LLM is unavailable, an explicit dish-type phrase is still a hard
+  // dish signal. Keep the distilled phrase as direct menu evidence rather than
+  // letting it become a broad restaurant/category text search.
+  return interpreted.categoryFromDishType && interpreted.query ? [interpreted.query] : [];
 };
 
 function interpretQuery(query: string): InterpretedFilters {
@@ -559,17 +586,17 @@ export class SearchController {
   async interpret(@Body() body: InterpretSearchDto) {
     const intent = this.aiIntent?.isEnabled() ? await this.aiIntent.interpret(body.query) : null;
     const interpreted = interpretQuery(body.query);
+    const category = firstFilterableCategory(intent, interpreted);
+    const dishQueries = canonicalDishQueries(intent, interpreted);
     const filters: InterpretedFilters & {
       priceLevel?: number;
       minRating?: number;
       openNow?: boolean;
       distanceKm?: number;
+      dishes?: AiIntent['canonicalDishes'];
     } = {
-      ...(intent?.categories?.[0]
-        ? { category: intent.categories[0] }
-        : interpreted.category
-          ? { category: interpreted.category }
-          : {}),
+      ...(category ? { category } : {}),
+      ...(dishQueries.length ? { dishes: intent?.canonicalDishes ?? [] } : {}),
       ...(intent?.district
         ? { district: intent.district }
         : interpreted.district
@@ -619,6 +646,7 @@ export class RecommendationsController {
     const interpreted = interpretQuery(body.query);
     const intent = this.aiIntent?.isEnabled() ? await this.aiIntent.interpret(body.query) : null;
     const category = firstFilterableCategory(intent, interpreted);
+    const dishQueries = canonicalDishQueries(intent, interpreted);
     const district = body.filters?.area ?? intent?.district ?? interpreted.district;
     const priceLevel = body.filters?.priceLevel ?? intent?.priceLevel ?? undefined;
     const minRating = body.filters?.minRating ?? intent?.minRating ?? undefined;
@@ -657,6 +685,22 @@ export class RecommendationsController {
         body.query.trim() ||
         '').slice(0, 200) || undefined;
     const semanticEmbedding = semanticText ? await this.resolveEmbedding(semanticText) : null;
+
+    const understanding: RecommendationUnderstanding = {
+      query: body.query,
+      aiSummary: intent?.summary ?? null,
+      filters: {
+        ...(category ? { category } : {}),
+        ...(dishQueries.length ? { dishes: intent?.canonicalDishes ?? [] } : {}),
+        ...(district ? { district } : {}),
+        attributes: interpreted.attributes,
+        tastes,
+        ...(priceLevel !== undefined ? { priceLevel } : {}),
+        ...(minRating !== undefined ? { minRating } : {}),
+        ...(openNow !== undefined ? { openNow } : {}),
+        ...(intent?.distanceKm ? { distanceKm: intent.distanceKm } : {}),
+      },
+    };
     const filters = {
       // Only the distilled food phrase becomes the SQL text filter. When the
       // interpretation consumed the whole sentence into structured filters
@@ -680,6 +724,7 @@ export class RecommendationsController {
           value,
       ),
       tastes,
+      dishQueries,
       limit: body.limit,
       semanticQuery: semanticText,
       embedding: semanticEmbedding ?? undefined,
@@ -706,6 +751,7 @@ export class RecommendationsController {
     const intended = {
       category: filters.category,
       tastes: filters.tastes,
+      dishQueries: filters.dishQueries,
     };
     let page = await this.restaurantsService.list(effective);
     if (!page.data.length && effective.district && !explicit.district) {
@@ -796,6 +842,7 @@ export class RecommendationsController {
           nextOffset !== null
             ? encodeRecommendationCursor({ offset: nextOffset, filters: snapshot })
             : null,
+        understanding,
       },
     };
   }

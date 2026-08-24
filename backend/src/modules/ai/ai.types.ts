@@ -17,6 +17,13 @@ export interface AiIntent {
   distanceKm: number | null;
   summary: string | null;
   semanticQuery: string | null;
+  canonicalDishes: CanonicalDishIntent[];
+}
+
+export interface CanonicalDishIntent {
+  dish: string;
+  confidence: number;
+  evidence: 'exact' | 'similarity';
 }
 
 export interface RawAiIntent {
@@ -122,5 +129,6 @@ export function normalizeAiIntent(
     distanceKm: validNumber(input.distanceKm, 1, 60),
     summary: firstStringOrNull(input.summary)?.slice(0, 200) ?? null,
     semanticQuery: firstStringOrNull(input.semanticQuery)?.slice(0, 200) ?? null,
+    canonicalDishes: [],
   };
 }

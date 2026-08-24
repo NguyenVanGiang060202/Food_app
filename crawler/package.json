@@ -12,6 +12,7 @@
     "crawl:playwright:batch": "ts-node --project tsconfig.json src/cli/playwright-batch-crawl.ts",
     "enrich:once": "ts-node --project tsconfig.json src/cli/enrich.ts",
     "enrich:ai": "ts-node --project tsconfig.json src/cli/enrich-ai.ts",
+    "enrich:menu-images": "ts-node --project tsconfig.json src/cli/enrich-menu-images.ts",
     "review:refresh": "ts-node --project tsconfig.json src/cli/review-refresh.ts",
     "embed:once": "ts-node --project tsconfig.json src/cli/embed.ts",
     "check": "npm run typecheck",

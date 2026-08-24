@@ -71,7 +71,8 @@ foreach ($migration in @(
    'database/migrations/024_food_attribute_taxonomy.sql',
    'database/migrations/025_reject_non_food_google_results.sql',
    'database/migrations/026_semantic_profile.sql',
-   'database/migrations/027_embedding_vector_index.sql'
+   'database/migrations/027_embedding_vector_index.sql',
+   'database/migrations/028_menu_image_dish_evidence.sql'
 )) {
   $version = [System.IO.Path]::GetFileNameWithoutExtension($migration)
   $applied = [string](docker compose exec -T postgres psql -At -U $User -d $Database -c "SELECT EXISTS (SELECT 1 FROM schema_migration WHERE version = '$version');")

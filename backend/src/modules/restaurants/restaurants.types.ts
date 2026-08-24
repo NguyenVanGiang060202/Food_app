@@ -70,6 +70,8 @@ export interface RestaurantFilters {
   cursor?: string;
   dishTypes?: string[];
   tastes?: string[];
+  /** Canonical dish names resolved against available menu rows. */
+  dishQueries?: string[];
   /** Semantic text kept on the recommendation cursor so a later page re-embeds the same query. */
   semanticQuery?: string;
   /** Query vector + active embedding model, attached internally for pgvector ranking. */

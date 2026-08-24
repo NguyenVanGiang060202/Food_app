@@ -10,7 +10,7 @@
 
 import { Injectable, Optional } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { AiIntent, normalizeAiIntent, RawAiIntent } from './ai.types';
+import { AiIntent, CanonicalDishIntent, normalizeAiIntent, RawAiIntent } from './ai.types';
 import { OpenAICompatibleAiClient } from './openai-compatible-ai.client';
 
 const CATEGORY_CACHE_TTL_MS = 60_000;
@@ -48,7 +48,9 @@ export class AiIntentService {
       const allowedSlugs = await this.validCategorySlugs();
       const system = buildIntentSystemPrompt(allowedSlugs);
       const raw = (await this.client.chatJson(system, `Câu hỏi: ${query.trim()}`)) as RawAiIntent;
-      return normalizeAiIntent(raw, allowedSlugs);
+      const intent = normalizeAiIntent(raw, allowedSlugs);
+      intent.canonicalDishes = await this.canonicalizeDishes(intent.dishes);
+      return intent;
     } catch {
       return null;
     }
@@ -65,6 +67,46 @@ export class AiIntentService {
     const slugs = new Set(result.rows.map((row) => row.slug));
     this.categoryCache = { expiresAt: now + CATEGORY_CACHE_TTL_MS, slugs };
     return slugs;
+  }
+
+  private async canonicalizeDishes(dishes: string[]): Promise<CanonicalDishIntent[]> {
+    const canonical: CanonicalDishIntent[] = [];
+    for (const dish of dishes.slice(0, 4)) {
+      const normalized = dish
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+      if (!normalized) continue;
+      const result = await this.database.query<{
+        name: string;
+        normalized_name: string;
+        similarity_score: number;
+      }>(
+        `SELECT name, normalized_name, similarity(normalized_name, $1) AS similarity_score
+           FROM dish
+          WHERE status = 'available'
+            AND (normalized_name = $1 OR similarity(normalized_name, $1) >= 0.78)
+          ORDER BY (normalized_name = $1) DESC, similarity_score DESC, name
+          LIMIT 1`,
+        [normalized],
+      );
+      const row = result.rows[0];
+      if (!row || typeof row.name !== 'string' || typeof row.normalized_name !== 'string') continue;
+      const exact = row.normalized_name === normalized;
+      canonical.push({
+        dish: row.name,
+        confidence: exact ? 1 : Math.min(0.95, Math.max(0.78, Number(row.similarity_score))),
+        evidence: exact ? 'exact' : 'similarity',
+      });
+    }
+    return canonical.filter(
+      (entry, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            candidate.dish.toLocaleLowerCase('vi-VN') === entry.dish.toLocaleLowerCase('vi-VN'),
+        ) === index,
+    );
   }
 }
 

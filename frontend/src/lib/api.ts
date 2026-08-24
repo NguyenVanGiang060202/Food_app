@@ -173,6 +173,7 @@ export type RecommendationItem = {
 export type RecommendationPage = {
   items: RecommendationItem[];
   nextCursor: string | null;
+  understanding: InterpretedSearch | null;
 };
 export type InterpretedSearch = {
   query: string;
@@ -182,6 +183,7 @@ export type InterpretedSearch = {
     district?: string;
     attributes: string[];
     tastes?: string[];
+    dishes?: Array<{ dish: string; confidence: number; evidence: string }>;
     priceLevel?: number;
     minRating?: number;
     openNow?: boolean;
@@ -344,14 +346,18 @@ export async function getRecommendations(
 ): Promise<RecommendationPage> {
   const result = await request<{
     data: RecommendationItem[];
-    meta?: { nextCursor: string | null };
+    meta?: { nextCursor: string | null; understanding?: InterpretedSearch | null };
   }>('/recommendations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     signal,
   });
-  return { items: result.data, nextCursor: result.meta?.nextCursor ?? null };
+  return {
+    items: result.data,
+    nextCursor: result.meta?.nextCursor ?? null,
+    understanding: result.meta?.understanding ?? null,
+  };
 }
 
 export async function getForYouRecommendations(): Promise<RecommendationItem[]> {

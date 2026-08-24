@@ -38,6 +38,7 @@ export const SELECTORS = {
     'button[data-item-id*="phone"], a[href^="tel:"], [aria-label*="phone" i], [aria-label*="điện thoại" i]',
   detailWebsite: 'a[data-item-id*="authority"], a[data-item-id*="website"], a[href^="http"]',
   detailImages: 'img[src^="http"]',
+  detailMenuTab: 'button[role="tab"]',
   detailClose: 'button[aria-label="Close"], button[aria-label="Đóng"]',
   detailReviewsButton: [
     'button[jsaction*="pane.rating.moreReviews"]',
