@@ -179,6 +179,14 @@ async function main(): Promise<void> {
         if (!dryRun) dishesApplied += await persistResult(pool, image, model, result);
       } catch (error) {
         failed += 1;
+        console.error(
+          JSON.stringify({
+            event: 'menu_image_failed',
+            imageId: image.id,
+            imageUrl: image.url,
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
         if (!dryRun)
           await pool.query(
             `INSERT INTO menu_image_extraction (restaurant_image_id, status, model, error_message, extracted_at, updated_at) VALUES ($1, 'failed', $2, $3, now(), now()) ON CONFLICT (restaurant_image_id) DO UPDATE SET status = 'failed', model = EXCLUDED.model, error_message = EXCLUDED.error_message, extracted_at = now(), updated_at = now()`,
