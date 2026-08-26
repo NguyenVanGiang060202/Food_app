@@ -82,6 +82,36 @@ DATABASE_URL=postgresql://food_app:change-me-locally@localhost:5432/food_app
 npm run crawl:playwright:batch --workspace crawler
 ```
 
+## Menu images -> OCR -> dishes -> restaurant profile
+
+Menu extraction is a second pass after the Google Maps crawl. The crawler first opens
+the dedicated `Menu/Thực đơn` surface when Google exposes one, snapshots the image URLs
+already present, clicks the menu surface, and keeps newly loaded menu images. This avoids
+feeding the entire restaurant gallery to OCR. The remaining detail-panel images are only
+a fallback when the menu surface is active but does not expose a distinct new URL.
+
+Run the OCR/dish pass after crawling:
+
+```bash
+npm run enrich:menu-images --workspace crawler -- --limit 100
+```
+
+Each accepted result is stored as `menu_image_extraction`, each dish is stored in `dish`,
+and `dish_evidence` keeps the exact menu image/name/price that supports it. Known dishes
+also receive deterministic `dish_attribute` links. When a new menu dish is found, the
+restaurant's cached `semantic_profile` is invalidated so the next AI enrichment includes
+the new menu data.
+
+Then rebuild the natural-language restaurant profile:
+
+```bash
+npm run enrich:ai --workspace crawler
+```
+
+The resulting profile is the useful downstream product: menu dishes become searchable
+restaurant facts and become input to the semantic profile/embedding path. A menu image is
+never treated as a dish unless the vision result identifies it as a high-confidence menu.
+
 Mặc định batch dùng các nhóm tổng quát như `quán ăn`, `nhà hàng`, `món Việt`, `bún phở`,
 `cơm`, `lẩu`, `nướng`, `hải sản`, món Nhật/Hàn, cà phê và tráng miệng. Có thể thay bằng
 danh sách riêng, phân cách bằng dấu phẩy trong `CRAWL_QUERIES` (ví dụ

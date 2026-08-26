@@ -347,3 +347,46 @@ test('Google Maps provider generates a deterministic external id when a result h
 
   assert.equal(records[0]?.externalId, 'gmaps_b224bafe89d6892aebbffa15f1b1e2c5');
 });
+
+test('Google Maps provider keeps a restaurant photo as cover when menu photos are present', async () => {
+  const provider = new GoogleMapsPlaywrightProvider({
+    crawlerFactory: () => ({
+      async crawl() {
+        return [
+          {
+            name: 'Menu Test',
+            rating: 4.5,
+            reviewCount: 10,
+            address: undefined,
+            category: 'Restaurant',
+            url: 'https://www.google.com/maps/place/Menu+Test',
+            phone: undefined,
+            website: undefined,
+            priceLevel: undefined,
+            openingHours: [],
+            coordinates: undefined,
+            images: [
+              { url: 'https://lh3.googleusercontent.com/menu-photo' },
+              { url: 'https://lh3.googleusercontent.com/front-photo' },
+            ],
+            menuImageUrls: ['https://lh3.googleusercontent.com/menu-photo'],
+            reviews: [],
+          },
+        ];
+      },
+      async crawlPlaceByUrl() {
+        return undefined;
+      },
+      async close() {},
+    }),
+  });
+
+  const records = [];
+  for await (const record of provider.discover({ query: 'restaurant', limit: 1 })) {
+    records.push(record);
+  }
+
+  assert.equal(records[0]?.images?.[0]?.isCover, false);
+  assert.equal(records[0]?.images?.[0]?.altText, 'Google Maps menu tab');
+  assert.equal(records[0]?.images?.[1]?.isCover, true);
+});

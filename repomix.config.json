@@ -1,0 +1,64 @@
+{
+  "output": {
+    "filePath": "tmp/ai-context/project-context.xml",
+    "style": "xml",
+    "parsableStyle": false,
+    "compress": true,
+    "showLineNumbers": false,
+    "removeComments": false,
+    "removeEmptyLines": true,
+    "topFilesLength": 20,
+    "copyToClipboard": false,
+    "includeEmptyDirectories": false
+  },
+  "include": [
+    "README.md",
+    "docs/00-project-overview.md",
+    "docs/01-system-architecture.md",
+    "docs/02-tech-stack.md",
+    "docs/03-database-design.md",
+    "docs/04-crawler-system.md",
+    "docs/05-data-pipeline.md",
+    "docs/06-backend-api-design.md",
+    "docs/07-frontend-architecture.md",
+    "docs/08-ai-recommendation-system.md",
+    "docs/09-development-rules.md",
+    "docs/11-api-contracts.md",
+    "docs/12-user-flow.md",
+    "docs/13-folder-structure.md",
+    "docs/14-security.md",
+    "docs/15-testing-strategy.md",
+    "docs/16-deployment.md",
+    "docs/17-environment-setup.md",
+    "docs/18-food-discovery-design-strategy.md",
+    "docs/19-data-display-policy.md",
+    "docs/19-next-work-roadmap.md",
+    "docs/20-frontend-release-checklist.md",
+    "docs/21-brand-voice.md",
+    "backend/package.json",
+    "crawler/package.json",
+    "frontend/package.json",
+    "package.json"
+  ],
+  "ignore": {
+    "customPatterns": [
+      "**/.env",
+      "**/.env.*",
+      "**/*.dump",
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/.vite/**",
+      "**/tmp/**",
+      "**/.cache/**",
+      "**/.runtime/**",
+      "**/logs/**",
+      "**/playwright-report/**",
+      "**/test-results/**"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  }
+}

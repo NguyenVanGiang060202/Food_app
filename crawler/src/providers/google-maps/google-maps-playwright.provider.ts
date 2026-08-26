@@ -9,6 +9,7 @@ import {
   parseReviewCount,
   normalizeCategorySlug,
   extractPlaceIdFromUrl,
+  normalizeGoogleImageUrl,
   rejectsNonFoodPlace,
   type ParsedPlace,
 } from './google-maps.parser';
@@ -136,8 +137,19 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
       openingHours: place.openingHours.length ? place.openingHours : undefined,
       images: (place.images ?? []).map((image, index) => ({
         ...image,
+        altText: isMenuImage(place.menuImageUrls, image.url)
+          ? 'Google Maps menu tab'
+          : image.altText,
         sortOrder: index,
-        isCover: index === 0,
+        // Menu photos are useful for OCR but should never become the restaurant
+        // cover shown to users. Prefer the first non-menu photo; if the venue
+        // only exposes menu photos, keep the first image as a last-resort cover.
+        isCover: place.images?.some((candidate) => !isMenuImage(place.menuImageUrls, candidate.url))
+          ? !isMenuImage(place.menuImageUrls, image.url) &&
+            (place.images ?? []).findIndex(
+              (candidate) => !isMenuImage(place.menuImageUrls, candidate.url),
+            ) === index
+          : index === 0,
       })),
       reviews: place.reviews.map((review) => ({
         externalReviewId: review.externalReviewId,
@@ -165,6 +177,12 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
       },
     };
   }
+}
+
+function isMenuImage(menuImageUrls: string[] | undefined, imageUrl: string): boolean {
+  return menuImageUrls?.some(
+    (menuUrl) => normalizeGoogleImageUrl(menuUrl) === normalizeGoogleImageUrl(imageUrl),
+  ) ?? false;
 }
 
 function buildQuery(input: DiscoveryInput): { query: string; location?: string } {

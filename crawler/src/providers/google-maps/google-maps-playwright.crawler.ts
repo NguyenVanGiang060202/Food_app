@@ -268,6 +268,7 @@ export class GoogleMapsPlaywrightCrawler {
         await page.waitForTimeout(1500);
 
         const details = await this.extractDetailPanelData(page);
+        const menuImages = await this.extractMenuImages(page);
         if (this.isMismatchedPanel(expectedName, details.name)) {
           console.error(
             JSON.stringify({
@@ -299,7 +300,8 @@ export class GoogleMapsPlaywrightCrawler {
             priceLevel: details.priceLevel,
             openingHours: [],
             coordinates: parseCoordinatesFromUrl(url),
-            images: normalizeImages(details.images),
+            images: normalizeImages([...menuImages, ...details.images]),
+            menuImageUrls: menuImages.map((image) => image.url),
             reviews,
           };
         }
@@ -361,6 +363,7 @@ export class GoogleMapsPlaywrightCrawler {
 
       const details = await this.extractDetailPanelData(page);
       const menuImages = await this.extractMenuImages(page);
+      place.menuImageUrls = menuImages.map((image) => image.url);
       if (this.isMismatchedPanel(place.name, details.name)) {
         // The detail panel did not switch to the requested place. Consuming
         // its data would leak the previous place's review count, phone, etc.
@@ -373,7 +376,7 @@ export class GoogleMapsPlaywrightCrawler {
       if (details.website !== undefined) place.website = details.website;
       if (details.priceLevel !== undefined) place.priceLevel = details.priceLevel;
       if (details.address && !place.address) place.address = details.address;
-      const combinedImages = [...(place.images ?? []), ...details.images, ...menuImages];
+      const combinedImages = [...menuImages, ...details.images, ...(place.images ?? [])];
       if (combinedImages.length) place.images = normalizeImages(combinedImages);
 
       if (this.extractReviews && this.maxReviewsPerPlace > 0) {
@@ -481,26 +484,121 @@ export class GoogleMapsPlaywrightCrawler {
    */
   private async extractMenuImages(page: Page): Promise<Array<{ url: string; altText?: string }>> {
     try {
-      const menuTab = page
-        .locator(SELECTORS.detailMenuTab)
-        .filter({ hasText: /menu|thực đơn|thuc don/i });
-      if ((await menuTab.count()) === 0) return [];
-      await menuTab
-        .first()
-        .click({ timeout: 5_000 })
-        .catch(() => undefined);
-      await page.waitForTimeout(900);
-      return await page.evaluate((selectors: Record<string, string>) => {
+      const menuPattern = /(?:^|[\s·•])(?:menu|thực đơn|thuc don)(?:$|[\s·•])/i;
+      const panel = page.locator(SELECTORS.detailPanel).first();
+      const menuCandidates = panel.locator('button, [role="tab"], a, [role="button"]');
+      const candidateCount = await menuCandidates.count();
+      let candidateIndex = -1;
+      for (let index = 0; index < candidateCount; index += 1) {
+        const candidate = menuCandidates.nth(index);
+        const text = `${await candidate.innerText().catch(() => '')} ${await candidate.getAttribute('aria-label').catch(() => '')}`.trim();
+        if (menuPattern.test(text)) {
+          candidateIndex = index;
+          break;
+        }
+      }
+      if (candidateIndex < 0) {
+        console.error(JSON.stringify({ event: 'menu_tab_missing' }));
+        return [];
+      }
+      const candidate = menuCandidates.nth(candidateIndex);
+      const imageUrlsBeforeClick = new Set(
+        await page.evaluate(() =>
+          Array.from(document.querySelectorAll<HTMLImageElement>('img'))
+            .map((image) => image.currentSrc || image.src)
+            .filter((url) => url.startsWith('http')),
+        ),
+      );
+      let clicked = await candidate.click({ timeout: 5_000, force: true }).then(
+        () => true,
+        () => false,
+      );
+      if (!clicked) {
+        // Google Maps occasionally leaves an invisible/overlaying element over the
+        // menu control. A DOM click is the last UI-level fallback and stays scoped
+        // to the visible menu candidate we already identified above.
+        clicked = await candidate
+          .first()
+          .evaluate((element) => {
+            (element as HTMLElement).click();
+            (element.parentElement as HTMLElement | null)?.click();
+            return true;
+          })
+          .then(() => true, () => false);
+        if (clicked) await page.waitForTimeout(1_000);
+      }
+      if (!clicked) {
+        console.error(JSON.stringify({ event: 'menu_tab_click_failed' }));
+        return [];
+      }
+      await page.waitForTimeout(2_500);
+      const menuState = await page.evaluate(
+        ({ selectors, allowAfterMenuClick, beforeUrls }: { selectors: Record<string, string>; allowAfterMenuClick: boolean; beforeUrls: string[] }) => {
         const panel = document.querySelector<HTMLElement>(selectors.detailPanel);
-        if (!panel) return [];
-        return Array.from(panel.querySelectorAll<HTMLImageElement>(selectors.detailImages))
-          .map((image) => ({
-            url: image.currentSrc || image.src,
-            altText: image.alt || 'Google Maps menu tab',
+        if (!panel) return { images: [], tabs: [] as string[], activeMenu: false };
+        const tabs = Array.from(panel.querySelectorAll<HTMLElement>('button, [role="tab"], a'))
+          .map((tab) => ({
+            text: (tab.innerText || '').trim(),
+            aria: tab.getAttribute('aria-label') || '',
+            selected: tab.getAttribute('aria-selected') || '',
+            current: tab.getAttribute('aria-current') || '',
           }))
+          .filter((tab) => /menu|thực đơn|thuc don/i.test(`${tab.text} ${tab.aria}`));
+        const activeTabs = Array.from(
+          panel.querySelectorAll<HTMLElement>('[role="tab"], [aria-current="page"]'),
+        )
+          .filter(
+            (tab) =>
+              tab.getAttribute('aria-selected') === 'true' ||
+              tab.getAttribute('aria-current') === 'page',
+          )
+          .map((tab) => (tab.innerText || tab.getAttribute('aria-label') || '').trim())
+          .filter(Boolean);
+        const activeMenu = Array.from(
+          panel.querySelectorAll<HTMLElement>('[role="tab"][aria-selected="true"], [aria-current="page"]'),
+        ).some((tab) => /menu|thực đơn|thuc don/i.test(tab.innerText || tab.getAttribute('aria-label') || ''));
+        const imageRoot = panel;
+        const before = new Set(beforeUrls);
+        const result = activeMenu || allowAfterMenuClick
+          ? Array.from(
+              imageRoot.querySelectorAll<HTMLElement>(
+                'img, [data-photo-url], [data-src], [data-lazy-src], [style*="background-image"]',
+              ),
+            )
+          .map((element) => {
+            const image = element as HTMLImageElement;
+            const styleUrl = element
+              .getAttribute('style')
+              ?.match(/url\(["']?([^"')]+)["']?\)/i)?.[1];
+            return {
+              url:
+                image.currentSrc ||
+                image.src ||
+                element.getAttribute('data-photo-url') ||
+                element.getAttribute('data-src') ||
+                element.getAttribute('data-lazy-src') ||
+                styleUrl ||
+                '',
+              altText: image.alt || 'Google Maps menu tab',
+            };
+          })
           .filter((image) => image.url.startsWith('http'))
-          .slice(0, 30);
-      }, SELECTORS);
+          .filter((image) => !before.has(image.url))
+          .slice(0, 30)
+          : [];
+        const fallback = result.length > 0 ? result : activeMenu
+          ? Array.from(panel.querySelectorAll<HTMLImageElement>('img[src^="http"]'))
+              .map((image) => ({ url: image.currentSrc || image.src, altText: image.alt || 'Google Maps menu tab' }))
+              .filter((image) => image.url.startsWith('http'))
+              .slice(0, 30)
+          : [];
+        return { images: fallback, tabs: [...activeTabs, ...tabs.map((tab) => `${tab.text} ${tab.aria} [${tab.selected || tab.current}]`)], activeMenu };
+        },
+        { selectors: SELECTORS, allowAfterMenuClick: true, beforeUrls: [...imageUrlsBeforeClick] },
+      );
+      console.error(JSON.stringify({ event: 'menu_tab_state', tabs: menuState.tabs, activeMenu: menuState.activeMenu }));
+      console.error(JSON.stringify({ event: 'menu_images_extracted', count: menuState.images.length }));
+      return menuState.images;
     } catch {
       return [];
     }

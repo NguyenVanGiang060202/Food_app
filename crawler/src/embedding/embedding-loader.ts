@@ -211,7 +211,10 @@ export class EmbeddingLoader {
                     WHERE rc.restaurant_id = r.id), '[]'::jsonb
                 ) AS categories,
                 COALESCE(
-                  (SELECT jsonb_agg(DISTINCT d.name)
+                  (SELECT jsonb_agg(DISTINCT (d.name || CASE
+                     WHEN d.price_amount IS NOT NULL THEN ' (' || to_char(d.price_amount, 'FM999G999G999') || ' ' || COALESCE(NULLIF(trim(d.currency_code), ''), 'VND') || ')'
+                     ELSE ''
+                   END))
                      FROM dish d
                     WHERE d.restaurant_id = r.id
                       AND d.status = 'available'), '[]'::jsonb

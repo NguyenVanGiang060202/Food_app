@@ -11,6 +11,7 @@ export interface ParsedPlace {
   openingHours: ParsedOpeningHour[];
   coordinates: { latitude: number; longitude: number } | undefined;
   images?: Array<{ url: string; altText?: string; isCover?: boolean; sortOrder?: number }>;
+  menuImageUrls?: string[];
   reviews: ParsedReview[];
 }
 

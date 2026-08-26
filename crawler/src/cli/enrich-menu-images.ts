@@ -3,6 +3,7 @@
 
 import { Pool } from 'pg';
 import { parseMenuImageResult } from '../enrichment/menu-image-extractor';
+import { classifyAttributes } from '../enrichment/attribute-classifier';
 
 interface ImageRow {
   id: string;
@@ -12,6 +13,7 @@ interface ImageRow {
 
 interface Options {
   limit: number;
+  batchSize: number;
   dryRun: boolean;
   refresh: boolean;
 }
@@ -20,6 +22,7 @@ const MODEL_SOURCE = 'menu_image:vision:v1';
 
 function parseArgs(argv: string[]): Options {
   let limit = 0;
+  let batchSize = 0;
   let dryRun = false;
   let refresh = false;
   for (let index = 0; index < argv.length; index += 1) {
@@ -27,13 +30,17 @@ function parseArgs(argv: string[]): Options {
       limit = Number(argv[index + 1]);
       if (!Number.isInteger(limit) || limit < 0)
         throw new Error('--limit must be a non-negative integer.');
+    } else if (argv[index] === '--batch-size') {
+      batchSize = Number(argv[index + 1]);
+      if (!Number.isInteger(batchSize) || batchSize < 0)
+        throw new Error('--batch-size must be a non-negative integer.');
     } else if (argv[index] === '--dry-run') {
       dryRun = true;
     } else if (argv[index] === '--refresh') {
       refresh = true;
     }
   }
-  return { limit, dryRun, refresh };
+  return { limit, batchSize, dryRun, refresh };
 }
 
 async function inspectImage(
@@ -42,27 +49,45 @@ async function inspectImage(
   model: string,
   imageUrl: string,
 ): Promise<unknown> {
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) {
+    throw new Error(`Could not download menu image: HTTP ${imageResponse.status}`);
+  }
+  const contentType = imageResponse.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg';
+  if (!contentType.startsWith('image/')) {
+    throw new Error(`Menu image URL returned non-image content: ${contentType}`);
+  }
+  const imageBytes = Buffer.from(await imageResponse.arrayBuffer());
+  if (imageBytes.length > 20 * 1024 * 1024) {
+    throw new Error('Menu image exceeds the 20 MB Vision input limit.');
+  }
+  const imageDataUrl = `data:${contentType};base64,${imageBytes.toString('base64')}`;
+  const isCloudflare = /\/ai\/v1\/?$/.test(baseUrl);
+  const endpoint = isCloudflare
+    ? `${baseUrl.replace(/\/ai\/v1\/?$/, '')}/ai/run/${model}`
+    : `${baseUrl}/chat/completions`;
+  const messages = [
+    {
+      role: 'system',
+      content:
+        'You extract restaurant menus from images. Return only JSON: {"isMenu":boolean,"confidence":0..1,"ocrText":"visible text","dishes":[{"name":"exact visible dish name","priceAmount":number|null,"rawPrice":"exact visible price or null"}]}. Set isMenu=false unless the image is clearly a menu or price list. Never infer, translate, complete, or invent dishes. Preserve Vietnamese spelling exactly as visible.',
+    },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Inspect this restaurant image.' },
+        { type: 'image_url', image_url: { url: imageDataUrl } },
+      ],
+    },
+  ];
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model,
+      ...(isCloudflare ? {} : { model }),
       temperature: 0,
       response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You extract restaurant menus from images. Return only JSON: {"isMenu":boolean,"confidence":0..1,"ocrText":"visible text","dishes":[{"name":"exact visible dish name","priceAmount":number|null,"rawPrice":"exact visible price or null"}]}. Set isMenu=false unless the image is clearly a menu or price list. Never infer, translate, complete, or invent dishes. Preserve Vietnamese spelling exactly as visible.',
-        },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Inspect this restaurant image.' },
-            { type: 'image_url', image_url: { url: imageUrl } },
-          ],
-        },
-      ],
+      messages,
     }),
   });
   if (!response.ok)
@@ -70,11 +95,21 @@ async function inspectImage(
       `Vision provider returned ${response.status}: ${(await response.text()).slice(0, 300)}`,
     );
   const payload = (await response.json()) as {
+    result?: { response?: string };
     choices?: Array<{ message?: { content?: string } }>;
   };
-  const content = payload.choices?.[0]?.message?.content;
+  const content = payload.result?.response ?? payload.choices?.[0]?.message?.content;
   if (!content) throw new Error('Vision provider returned an empty response.');
-  return JSON.parse(content) as unknown;
+  try {
+    return JSON.parse(content) as unknown;
+  } catch {
+    const jsonCandidate = content.match(/\{[\s\S]*\}/)?.[0];
+    if (jsonCandidate) return JSON.parse(jsonCandidate) as unknown;
+    // Some native vision endpoints ignore JSON mode for ordinary photos. Treat
+    // a prose description without dish-shaped JSON as a valid non-menu result
+    // so gallery photos do not stop the batch.
+    return { isMenu: false, confidence: 0, ocrText: content.slice(0, 12_000), dishes: [] };
+  }
 }
 
 async function persistResult(
@@ -123,7 +158,7 @@ async function persistResult(
         ).rows[0].id;
       } else {
         await client.query(
-          `UPDATE dish SET price_amount = COALESCE(price_amount, $2), currency_code = COALESCE(currency_code, $3), source = CASE WHEN source LIKE 'enrichment:%' THEN $4 ELSE source END, confidence = GREATEST(COALESCE(confidence, 0), $5) WHERE id = $1`,
+          `UPDATE dish SET price_amount = COALESCE($2, price_amount), currency_code = COALESCE($3, currency_code), source = CASE WHEN source LIKE 'enrichment:%' OR source IS NULL THEN $4 ELSE source END, confidence = GREATEST(COALESCE(confidence, 0), $5) WHERE id = $1`,
           [dishId, item.priceAmount, item.currencyCode, MODEL_SOURCE, result.confidence],
         );
       }
@@ -134,7 +169,26 @@ async function persistResult(
            SET raw_name = EXCLUDED.raw_name, raw_price = EXCLUDED.raw_price, confidence = EXCLUDED.confidence, verified_at = now()`,
         [dishId, image.id, item.name, item.rawPrice, result.confidence],
       );
+      for (const attribute of classifyAttributes(item.normalizedName)) {
+        await client.query(
+          `INSERT INTO dish_attribute (dish_id, attribute_id, source, confidence)
+           SELECT $1, fa.id, $3, $4
+           FROM food_attribute fa
+           WHERE fa.code = $2 AND fa.is_active = true
+           ON CONFLICT (dish_id, attribute_id) DO NOTHING`,
+          [dishId, attribute.code, MODEL_SOURCE, attribute.confidence],
+        );
+      }
       dishesApplied += 1;
+    }
+    if (dishesApplied > 0) {
+      // A new menu item changes the restaurant's semantic food profile. Clear
+      // the cached profile so the next `enrich:ai` run regenerates it from the
+      // newly OCR'd menu instead of silently keeping stale text.
+      await client.query(
+        `UPDATE restaurant SET semantic_profile = NULL, updated_at = now() WHERE id = $1`,
+        [image.restaurant_id],
+      );
     }
     await client.query('COMMIT');
     return dishesApplied;
@@ -147,7 +201,7 @@ async function persistResult(
 }
 
 async function main(): Promise<void> {
-  const { limit, dryRun, refresh } = parseArgs(process.argv.slice(2));
+  const { limit, batchSize, dryRun, refresh } = parseArgs(process.argv.slice(2));
   const baseUrl = (process.env.AI_BASE_URL ?? '').replace(/\/+$/, '');
   const apiKey = process.env.AI_API_KEY;
   const model = process.env.AI_VISION_MODEL ?? process.env.AI_MODEL;
@@ -165,18 +219,31 @@ async function main(): Promise<void> {
     let sql = `SELECT ri.id, ri.restaurant_id, ri.url FROM restaurant_image ri JOIN restaurant r ON r.id = ri.restaurant_id WHERE ri.status = 'active' AND r.status = 'active'`;
     if (!refresh)
       sql += ` AND NOT EXISTS (SELECT 1 FROM menu_image_extraction mie WHERE mie.restaurant_image_id = ri.id AND mie.status IN ('completed', 'not_menu'))`;
-    sql += ' ORDER BY ri.id';
-    if (limit > 0) sql += ` LIMIT ${limit}`;
+    sql += ` ORDER BY ri.id`;
+    if (batchSize > 0) sql += ` LIMIT ${batchSize}`;
+    else if (limit > 0) sql += ` LIMIT ${limit}`;
     const images = (await pool.query<ImageRow>(sql)).rows;
+    console.error(JSON.stringify({ event: 'menu_image_enrichment_started', totalImages: images.length, dryRun, refresh }));
     let menus = 0;
     let dishesApplied = 0;
     let failed = 0;
-    for (const image of images) {
+    for (let index = 0; index < images.length; index += 1) {
+      const image = images[index];
       try {
         const result = parseMenuImageResult(await inspectImage(baseUrl, apiKey, model, image.url));
         if (!result) throw new Error('Vision provider returned invalid menu JSON.');
         if (result.isMenu && result.confidence >= 0.65) menus += 1;
         if (!dryRun) dishesApplied += await persistResult(pool, image, model, result);
+        if ((index + 1) % 100 === 0 || index === images.length - 1) {
+          console.error(JSON.stringify({
+            event: 'menu_image_progress',
+            processed: index + 1,
+            total: images.length,
+            menus,
+            dishesApplied,
+            failed,
+          }));
+        }
       } catch (error) {
         failed += 1;
         console.error(

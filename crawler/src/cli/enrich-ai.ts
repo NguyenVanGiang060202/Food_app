@@ -105,7 +105,7 @@ async function generateProfiles(
 ): Promise<ProfileItem[]> {
   const list = batch
     .map((row, index) => {
-      const dishes = row.dishes.length ? ` món: ${row.dishes.join(', ')}` : '';
+      const dishes = row.dishes.length ? ` món và giá tham khảo: ${row.dishes.join(', ')}` : '';
       const reviews = row.reviews.length
         ? ` review: ${row.reviews.map((review) => `"${review}"`).join('; ')}`
         : '';
@@ -123,7 +123,7 @@ async function generateProfiles(
     `Với MỖI quán, viết "profile": 2-4 câu tiếng Việt tự nhiên, dựa trên tất cả thông tin được cung cấp (tên, nhóm món, món, review, khu vực, phân khúc giá).`,
     'Gồm: món chính/tinh hoa, hương vị (mặn/ngọt/cay/đậm đà...), độ no/khẩu phần, cách chế biến, điểm khách khen hoặc không gian nếu có.',
     'Nếu tên quán hoặc nhóm món đã đủ gợi ý loại đồ ăn (vd "Phở", "Bún", "Nướng", "Chay"), hãy nêu rõ đặc trưng của loại đó ngay cả khi không có danh sách món cụ thể.',
-    'KHÔNG bịa món không xuất hiện trong thông tin; không nói giá, địa chỉ, giờ mở cửa cụ thể.',
+    'KHÔNG bịa món không xuất hiện trong thông tin; chỉ nêu giá món khi dữ liệu cung cấp có giá, không suy đoán giá hoặc địa chỉ/giờ mở cửa cụ thể.',
     `Đồng thời gán "category" bằng đúng một trong các slug: ${slugs.join(', ')}, nếu không rõ thì null.`,
     'Trả về JSON object duy nhất dạng {"items":[{"index":0,"profile":"...","category":"bun"}]}. Không markdown, không giải thích thêm.',
   ].join('\n');
@@ -268,7 +268,10 @@ async function main(): Promise<void> {
         COALESCE((
           SELECT jsonb_agg(x.n)
           FROM (
-            SELECT d.name AS n
+            SELECT d.name || CASE
+              WHEN d.price_amount IS NOT NULL THEN ' (' || to_char(d.price_amount, 'FM999G999G999') || ' ' || COALESCE(NULLIF(trim(d.currency_code), ''), 'VND') || ')'
+              ELSE ''
+            END AS n
             FROM dish d
             WHERE d.restaurant_id = r.id
               AND d.status = 'available'

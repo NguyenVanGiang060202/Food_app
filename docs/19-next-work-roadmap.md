@@ -256,3 +256,8 @@ blocking hoặc giá trị portfolio rõ ràng.
 - Khi một milestone hoàn tất, cập nhật roadmap và domain document liên quan.
 - Giữ terminal command ASCII-only trong PowerShell và không đưa secret thật vào
   repository, issue hoặc log chia sẻ.
+
+## 10. Tài liệu liên quan
+
+- [Menu Image OCR Plan](22-menu-image-ocr-plan.md) — Kế hoạch re-crawl để lấy menu
+  images từ Google Maps + review photos, rồi OCR extract dishes.

@@ -160,7 +160,7 @@ export class CanonicalUpsertPipeline {
       }
       for (const image of record.images ?? [])
         await client.query(
-          `INSERT INTO restaurant_image (restaurant_id, restaurant_source_id, url, alt_text, sort_order, is_cover, status) VALUES ($1,$2,$3,$4,$5,$6,'active') ON CONFLICT DO NOTHING`,
+          `INSERT INTO restaurant_image (restaurant_id, restaurant_source_id, url, alt_text, sort_order, is_cover, status) VALUES ($1,$2,$3,$4,$5,$6,'active') ON CONFLICT (restaurant_id, COALESCE(restaurant_source_id, '00000000-0000-0000-0000-000000000000'::uuid), url) DO UPDATE SET alt_text = COALESCE(NULLIF(EXCLUDED.alt_text, ''), restaurant_image.alt_text), sort_order = LEAST(restaurant_image.sort_order, EXCLUDED.sort_order), is_cover = restaurant_image.is_cover OR EXCLUDED.is_cover, status = 'active'`,
           [
             restaurantId,
             sourceId,

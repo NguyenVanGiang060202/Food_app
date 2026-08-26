@@ -18,6 +18,9 @@ tmp/
 .cache/
 .runtime/
 
+# Generated AI context snapshots
+tmp/ai-context/
+
 # Local request body scratch files
 body.json
 recommendation-body.json
