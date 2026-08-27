@@ -158,20 +158,39 @@ async function inspectImage(
   model: string,
   imageUrl: string,
 ): Promise<unknown> {
-  const imageResponse = await fetch(imageUrl);
-  if (!imageResponse.ok) {
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const imageResponse = await fetch(imageUrl);
+    if (imageResponse.ok) {
+      const contentType = imageResponse.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg';
+      if (!contentType.startsWith('image/')) {
+        throw new Error(`Menu image URL returned non-image content: ${contentType}`);
+      }
+      const imageBytes = Buffer.from(await imageResponse.arrayBuffer());
+      if (imageBytes.length > 20 * 1024 * 1024) {
+        throw new Error('Menu image exceeds the 20 MB Vision input limit.');
+      }
+      const imageDataUrl = `data:${contentType};base64,${imageBytes.toString('base64')}`;
+      // ... rest of function
+      return await processImage(baseUrl, apiKey, model, imageDataUrl);
+    }
+    if (imageResponse.status === 429 && attempt < maxRetries) {
+      const waitMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+      await new Promise(r => setTimeout(r, waitMs));
+      continue;
+    }
     throw new Error(`Could not download menu image: HTTP ${imageResponse.status}`);
   }
-  const contentType = imageResponse.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg';
-  if (!contentType.startsWith('image/')) {
-    throw new Error(`Menu image URL returned non-image content: ${contentType}`);
-  }
-  const imageBytes = Buffer.from(await imageResponse.arrayBuffer());
-  if (imageBytes.length > 20 * 1024 * 1024) {
-    throw new Error('Menu image exceeds the 20 MB Vision input limit.');
-  }
-  const imageDataUrl = `data:${contentType};base64,${imageBytes.toString('base64')}`;
+  throw lastError;
+}
 
+async function processImage(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  imageDataUrl: string,
+): Promise<unknown> {
   const classifyPrompt =
     'Classify this restaurant image into ONE of these categories:\n' +
     '- menu: a printed/digital menu, price list, or food ordering card with dish names and prices\n' +
