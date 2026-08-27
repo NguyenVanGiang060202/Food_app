@@ -43,6 +43,110 @@ function parseArgs(argv: string[]): Options {
   return { limit, batchSize, dryRun, refresh };
 }
 
+function normalizeDishName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parsePrice(raw: string | undefined): { amount: number | null; raw: string | null } {
+  if (!raw) return { amount: null, raw: null };
+  const cleaned = raw.replace(/[.,\s]/g, '').trim();
+  const match = cleaned.match(/(\d+)\s*(k|000|₫|VND)?$/i);
+  if (!match) return { amount: null, raw };
+  let amount = Number(match[1]);
+  if (match[2] && /k/i.test(match[2])) amount *= 1000;
+  return { amount: Number.isFinite(amount) ? amount : null, raw };
+}
+
+function parseDishesFromProse(text: string): Array<{ name: string; priceAmount: number | null; rawPrice: string | null }> {
+  const dishes: Array<{ name: string; priceAmount: number | null; rawPrice: string | null }> = [];
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    const priceMatch = line.match(
+      /^(.+?)\s*[-–—:]\s*(\d[\d.,]*\s*(?:k|000|₫|VND)?)\s*$/i,
+    );
+    if (priceMatch) {
+      const name = priceMatch[1].replace(/^[\d•*.\-\s]+/, '').trim();
+      if (name.length >= 2 && name.length <= 160) {
+        const p = parsePrice(priceMatch[2]);
+        dishes.push({ name, priceAmount: p.amount, rawPrice: p.raw });
+      }
+      continue;
+    }
+    const bulletMatch = line.match(/^[\d•*.\-]+\s*(.+?)\s*[-–—:]\s*(\d[\d.,]*\s*(?:k|000|₫|VND)?)\s*$/i);
+    if (bulletMatch) {
+      const name = bulletMatch[1].trim();
+      if (name.length >= 2 && name.length <= 160) {
+        const p = parsePrice(bulletMatch[2]);
+        dishes.push({ name, priceAmount: p.amount, rawPrice: p.raw });
+      }
+    }
+  }
+  return dishes;
+}
+
+async function callVision(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  imageDataUrl: string,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<string> {
+  const isCloudflare = /\/ai\/v1\/?$/.test(baseUrl);
+  const endpoint = isCloudflare
+    ? `${baseUrl.replace(/\/ai\/v1\/?$/, '')}/ai/run/${model}`
+    : `${baseUrl}/chat/completions`;
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: userPrompt },
+        { type: 'image_url', image_url: { url: imageDataUrl } },
+      ],
+    },
+  ];
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      ...(isCloudflare ? {} : { model }),
+      temperature: 0,
+      messages,
+    }),
+  });
+  if (!response.ok)
+    throw new Error(
+      `Vision provider returned ${response.status}: ${(await response.text()).slice(0, 300)}`,
+    );
+  const payload = (await response.json()) as {
+    result?: { response?: string };
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return payload.result?.response ?? payload.choices?.[0]?.message?.content ?? '';
+}
+
+function parseDishNamesFromProse(text: string): string[] {
+  const names: string[] = [];
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    const cleaned = line
+      .replace(/^[\d•*.\-]+\s*/, '')
+      .replace(/\s*[-–—:]\s*(none|no price|giá.*|price.*)$/i, '')
+      .trim();
+    if (cleaned.length >= 2 && cleaned.length <= 160 && !/^(dish|name|food|item)/i.test(cleaned)) {
+      names.push(cleaned);
+    }
+  }
+  return names;
+}
+
 async function inspectImage(
   baseUrl: string,
   apiKey: string,
@@ -62,54 +166,76 @@ async function inspectImage(
     throw new Error('Menu image exceeds the 20 MB Vision input limit.');
   }
   const imageDataUrl = `data:${contentType};base64,${imageBytes.toString('base64')}`;
-  const isCloudflare = /\/ai\/v1\/?$/.test(baseUrl);
-  const endpoint = isCloudflare
-    ? `${baseUrl.replace(/\/ai\/v1\/?$/, '')}/ai/run/${model}`
-    : `${baseUrl}/chat/completions`;
-  const messages = [
-    {
-      role: 'system',
-      content:
-        'You extract restaurant menus from images. Return only JSON: {"isMenu":boolean,"confidence":0..1,"ocrText":"visible text","dishes":[{"name":"exact visible dish name","priceAmount":number|null,"rawPrice":"exact visible price or null"}]}. Set isMenu=false unless the image is clearly a menu or price list. Never infer, translate, complete, or invent dishes. Preserve Vietnamese spelling exactly as visible.',
-    },
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: 'Inspect this restaurant image.' },
-        { type: 'image_url', image_url: { url: imageDataUrl } },
-      ],
-    },
-  ];
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      ...(isCloudflare ? {} : { model }),
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages,
-    }),
-  });
-  if (!response.ok)
-    throw new Error(
-      `Vision provider returned ${response.status}: ${(await response.text()).slice(0, 300)}`,
-    );
-  const payload = (await response.json()) as {
-    result?: { response?: string };
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = payload.result?.response ?? payload.choices?.[0]?.message?.content;
-  if (!content) throw new Error('Vision provider returned an empty response.');
-  try {
-    return JSON.parse(content) as unknown;
-  } catch {
-    const jsonCandidate = content.match(/\{[\s\S]*\}/)?.[0];
-    if (jsonCandidate) return JSON.parse(jsonCandidate) as unknown;
-    // Some native vision endpoints ignore JSON mode for ordinary photos. Treat
-    // a prose description without dish-shaped JSON as a valid non-menu result
-    // so gallery photos do not stop the batch.
-    return { isMenu: false, confidence: 0, ocrText: content.slice(0, 12_000), dishes: [] };
+
+  const classifyPrompt =
+    'Classify this restaurant image into ONE of these categories:\n' +
+    '- menu: a printed/digital menu, price list, or food ordering card with dish names and prices\n' +
+    '- food_photo: a photo of a prepared dish/food (plate, bowl, etc.)\n' +
+    '- other: anything else (restaurant exterior, interior, people, logo, etc.)\n' +
+    'Answer with ONLY the category word: menu, food_photo, or other';
+  const classifyResult = (await callVision(baseUrl, apiKey, model, imageDataUrl, '', classifyPrompt))
+    .trim()
+    .toLowerCase();
+
+  if (classifyResult.includes('menu')) {
+    const ocrPrompt =
+      'This image IS a restaurant menu or price list. Extract ALL visible dishes and their prices.\n' +
+      'List each dish on its own line in this exact format:\n' +
+      'DISH_NAME - PRICE_VND\n' +
+      'For example:\n' +
+      'Bun bo hue - 45000\n' +
+      'Com tam - 35000\n' +
+      'Banh mi - 25000\n\n' +
+      'Rules:\n' +
+      '- Use the EXACT Vietnamese spelling visible on the menu\n' +
+      '- Price should be the raw number (45000, not 45k)\n' +
+      '- If no price is visible, write: DISH_NAME - none\n' +
+      '- Do NOT add descriptions, categories, or explanations\n' +
+      '- Do NOT infer or invent dishes not visible\n' +
+      '- List EVERY dish you can read, even partial text';
+    const ocrText = await callVision(baseUrl, apiKey, model, imageDataUrl, '', ocrPrompt);
+    const dishes = parseDishesFromProse(ocrText);
+    return {
+      isMenu: true,
+      confidence: dishes.length > 0 ? 0.85 : 0.5,
+      ocrText: ocrText.slice(0, 12_000),
+      dishes: dishes.map((d) => ({
+        name: d.name,
+        normalizedName: normalizeDishName(d.name),
+        priceAmount: d.priceAmount,
+        currencyCode: 'VND',
+        rawPrice: d.rawPrice,
+      })),
+    };
   }
+
+  if (classifyResult.includes('food_photo')) {
+    const dishPrompt =
+      'This image shows a prepared food dish. What Vietnamese dish is this?\n' +
+      'Answer with ONLY the dish name in Vietnamese, nothing else.\n' +
+      'For example: Bún bò huế, Cơm tấm, Phở bò, Bánh mì thịt\n' +
+      'If you cannot identify the dish, answer: unknown';
+    const dishName = (await callVision(baseUrl, apiKey, model, imageDataUrl, '', dishPrompt)).trim();
+    if (dishName && dishName !== 'unknown' && dishName.length >= 2) {
+      return {
+        isMenu: true,
+        confidence: 0.7,
+        ocrText: `food_photo: ${dishName}`,
+        dishes: [
+          {
+            name: dishName,
+            normalizedName: normalizeDishName(dishName),
+            priceAmount: null,
+            currencyCode: 'VND',
+            rawPrice: null,
+          },
+        ],
+      };
+    }
+    return { isMenu: false, confidence: 0, ocrText: `food_photo: ${dishName}`, dishes: [] };
+  }
+
+  return { isMenu: false, confidence: 0, ocrText: `classify: ${classifyResult}`, dishes: [] };
 }
 
 async function persistResult(
