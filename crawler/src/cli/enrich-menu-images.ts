@@ -99,27 +99,32 @@ async function callVision(
   userPrompt: string,
 ): Promise<string> {
   const isCloudflare = /\/ai\/v1\/?$/.test(baseUrl);
+  const isSiliconFlow = /siliconflow\.(cn|com)/i.test(baseUrl);
   const endpoint = isCloudflare
     ? `${baseUrl.replace(/\/ai\/v1\/?$/, '')}/ai/run/${model}`
-    : `${baseUrl}/chat/completions`;
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: userPrompt },
-        { type: 'image_url', image_url: { url: imageDataUrl } },
-      ],
-    },
-  ];
+    : `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+  const messages = [];
+  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+  messages.push({
+    role: 'user',
+    content: [
+      { type: 'text', text: userPrompt },
+      { type: 'image_url', image_url: { url: imageDataUrl } },
+    ],
+  });
+  const body: Record<string, unknown> = {
+    temperature: 0,
+    messages,
+  };
+  if (!isCloudflare) body.model = model;
+  if (isSiliconFlow) {
+    body.max_tokens = 4096;
+    body.stream = false;
+  }
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      ...(isCloudflare ? {} : { model }),
-      temperature: 0,
-      messages,
-    }),
+    body: JSON.stringify(body),
   });
   if (!response.ok)
     throw new Error(
