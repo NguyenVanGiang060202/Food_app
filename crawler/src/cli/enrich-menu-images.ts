@@ -358,6 +358,7 @@ async function main(): Promise<void> {
     let menus = 0;
     let dishesApplied = 0;
     let failed = 0;
+    const delayMs = Number(process.env.AI_DELAY_MS ?? '500');
     for (let index = 0; index < images.length; index += 1) {
       const image = images[index];
       try {
@@ -394,6 +395,9 @@ async function main(): Promise<void> {
               error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000),
             ],
           );
+      }
+      if (delayMs > 0 && index < images.length - 1) {
+        await new Promise(r => setTimeout(r, delayMs));
       }
     }
     console.log(

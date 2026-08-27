@@ -49,8 +49,10 @@ Step 3: Persist
 
 ### Vision Model
 
-Sử dụng **Cloudflare Workers AI** `@cf/meta/llama-3.2-11b-vision-instruct`:
-- **Cost:** Free tier (không tốn tiền)
+Sử dụng **Moondream Cloud** `moondream3-preview`:
+- **Cost:** Free tier ($5/month credits, 5,000 req/ngày)
+- **API:** OpenAI-compatible
+- **Rate limit:** 2 req/giây → cần delay 500ms giữa requests
 - **Prompt:** Đã có sẵn trong `enrich-menu-images.ts`
 - **Output:** `{isMenu, confidence, ocrText, dishes[{name, priceAmount, rawPrice}]}`
 
@@ -61,21 +63,23 @@ Sử dụng **Cloudflare Workers AI** `@cf/meta/llama-3.2-11b-vision-instruct`:
 1. **Bỏ menu_tab priority filter** — không còn ORDER BY ưu tiên ảnh có alt_text "menu"
 2. **Thêm `--batch-size` option** — xử lý N ảnh mỗi lần chạy ( útil cho VPS)
 3. **Thêm progress logging** — log mỗi 100 ảnh để monitor trên VPS
+4. **Thêm `AI_DELAY_MS` env** — delay giữa requests (default 500ms cho Moondream free tier)
+5. **2-step classify → extract** — phân loại ảnh trước, extract dishes sau
 
 ### Implementation
 
 ```bash
 # Chạy batch nhỏ (test)
-npm run enrich:menu-images --workspace crawler -- --batch-size 100
+docker compose run --rm --entrypoint node crawler crawler/dist/cli/enrich-menu-images.js --batch-size 100
+
+# Chạy batch 500 (default)
+docker compose run --rm --entrypoint node crawler crawler/dist/cli/enrich-menu-images.js --batch-size 500
 
 # Chạy tất cả ảnh chưa xử lý (~26K)
-npm run enrich:menu-images --workspace crawler
-
-# Re-process tất cả (bao gồm 41 ảnh đã xử lý)
-npm run enrich:menu-images --workspace crawler -- --refresh
+nohup /root/ocr-all.sh > /tmp/ocr-schedule.log 2>&1 &
 
 # Dry run (chỉ xem kết quả, không ghi DB)
-npm run enrich:menu-images --workspace crawler -- --dry-run --batch-size 50
+docker compose run --rm --entrypoint node crawler crawler/dist/cli/enrich-menu-images.js --dry-run --batch-size 50
 ```
 
 ### Expected Results
