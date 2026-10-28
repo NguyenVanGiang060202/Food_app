@@ -47,6 +47,7 @@ export interface SourceRestaurantRecord {
   priceLevel?: number;
   rating?: number;
   reviewCount?: number;
+  status?: 'active' | 'temporarily_closed' | 'permanently_closed' | 'unknown';
   images?: SourceImage[];
   dishes?: SourceDish[];
   reviews?: SourceReview[];

@@ -15,6 +15,23 @@ interface DishRow {
   category_name: string | null;
 }
 
+// A dish is user-facing recommendation truth only when it is backed by a
+// completed, trusted menu extraction. Legacy enrichment rows are still kept
+// for audit/profile work, but must not appear as purchasable menu items.
+const TRUSTED_MENU_EVIDENCE_SQL = `EXISTS (
+  SELECT 1
+  FROM dish_evidence trusted_de
+  JOIN menu_image_extraction trusted_mie
+    ON trusted_mie.restaurant_image_id = trusted_de.restaurant_image_id
+  WHERE trusted_de.dish_id = d.id
+    AND trusted_de.evidence_type = 'menu_image'
+    AND trusted_mie.status = 'completed'
+    AND trusted_mie.model IN ('website:menu:v1', 'website:menu-image-curated:v1', 'google_maps:menu-curated:v1')
+    AND COALESCE(trusted_mie.raw_ocr_text, '') NOT ILIKE 'food_photo:%'
+    AND COALESCE(trusted_mie.raw_ocr_text, '') NOT ILIKE '%dish_name%'
+    AND COALESCE(trusted_mie.raw_ocr_text, '') NOT ILIKE '%price_vnd%'
+)`;
+
 @Controller('dishes')
 export class DishesController {
   constructor(private readonly database: DatabaseService) {}
@@ -62,9 +79,12 @@ export class DishesController {
       const result = await this.database.query<DishRow>(
         `SELECT d.id, d.name, d.description, d.price_amount, d.currency_code, d.is_popular, r.id AS restaurant_id, r.name AS restaurant_name, cover.url AS cover_image_url, category.name AS category_name
                 FROM dish d JOIN restaurant r ON r.id = d.restaurant_id AND r.status = 'active'
-                LEFT JOIN LATERAL (SELECT ri.url FROM restaurant_image ri WHERE ri.restaurant_id = r.id AND ri.is_cover = true AND ri.status = 'active' ORDER BY ri.sort_order, ri.id LIMIT 1) cover ON true
+                LEFT JOIN LATERAL (SELECT CASE WHEN ri.cached_object_key IS NOT NULL THEN '/api/v1/media/restaurant-images/' || ri.id::text ELSE ri.url END AS url FROM restaurant_image ri WHERE ri.restaurant_id = r.id AND ri.is_cover = true AND ri.status = 'active' ORDER BY (ri.cached_object_key IS NOT NULL) DESC, ri.sort_order, ri.id LIMIT 1) cover ON true
                 LEFT JOIN LATERAL (SELECT c.name FROM restaurant_category rc JOIN category c ON c.id = rc.category_id AND c.is_active = true WHERE rc.restaurant_id = r.id ORDER BY c.name LIMIT 1) category ON true
-                WHERE d.status = 'available' ${clauses.length ? `AND ${clauses.join(' AND ')}` : ''} ORDER BY d.is_popular DESC, r.rating DESC NULLS LAST, d.name LIMIT $1`,
+                WHERE d.status = 'available'
+                  AND ${TRUSTED_MENU_EVIDENCE_SQL}
+                  ${clauses.length ? `AND ${clauses.join(' AND ')}` : ''}
+                ORDER BY d.is_popular DESC, r.rating DESC NULLS LAST, d.name LIMIT $1`,
         values,
       );
       return {
@@ -92,9 +112,9 @@ export class DishesController {
       const result = await this.database.query<DishRow>(
         `SELECT d.id, d.name, d.description, d.price_amount, d.currency_code, d.is_popular, r.id AS restaurant_id, r.name AS restaurant_name, cover.url AS cover_image_url, category.name AS category_name
                 FROM dish d JOIN restaurant r ON r.id = d.restaurant_id AND r.status = 'active'
-                LEFT JOIN LATERAL (SELECT ri.url FROM restaurant_image ri WHERE ri.restaurant_id = r.id AND ri.is_cover = true AND ri.status = 'active' ORDER BY ri.sort_order, ri.id LIMIT 1) cover ON true
+                LEFT JOIN LATERAL (SELECT CASE WHEN ri.cached_object_key IS NOT NULL THEN '/api/v1/media/restaurant-images/' || ri.id::text ELSE ri.url END AS url FROM restaurant_image ri WHERE ri.restaurant_id = r.id AND ri.is_cover = true AND ri.status = 'active' ORDER BY (ri.cached_object_key IS NOT NULL) DESC, ri.sort_order, ri.id LIMIT 1) cover ON true
                 LEFT JOIN LATERAL (SELECT c.name FROM restaurant_category rc JOIN category c ON c.id = rc.category_id AND c.is_active = true WHERE rc.restaurant_id = r.id ORDER BY c.name LIMIT 1) category ON true
-                WHERE d.id = $1 AND d.status = 'available'`,
+                WHERE d.id = $1 AND d.status = 'available' AND ${TRUSTED_MENU_EVIDENCE_SQL}`,
         [dishId],
       );
       const row = result.rows[0];

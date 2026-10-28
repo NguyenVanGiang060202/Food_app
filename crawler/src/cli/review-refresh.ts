@@ -33,12 +33,7 @@ const THRESHOLD = clampInt(process.env.REVIEW_REFRESH_THRESHOLD ?? '', 20, 0, 10
 const DELAY_MS = clampInt(process.env.CRAWL_DELAY_MS ?? '', 2500, 0, 120_000);
 const CONCURRENCY = clampInt(process.env.CRAWL_CONCURRENCY ?? '', 2, 1, 8);
 const HEARTBEAT_SECONDS = clampInt(process.env.CRAWL_HEARTBEAT_SECONDS ?? '', 30, 5, 600);
-const MAX_REVIEWS_PER_PLACE = clampInt(
-  process.env.CRAWL_MAX_REVIEWS_PER_PLACE ?? '',
-  20,
-  1,
-  20,
-);
+const MAX_REVIEWS_PER_PLACE = clampInt(process.env.CRAWL_MAX_REVIEWS_PER_PLACE ?? '', 20, 0, 20);
 const BROWSER_RESTART_EVERY = clampInt(
   process.env.CRAWL_BROWSER_RESTART_EVERY ?? '',
   150,
@@ -60,10 +55,20 @@ interface ReviewTarget {
   name: string;
 }
 
-function parseArgs(argv: string[]): { limit: number; dryRun: boolean; threshold: number } {
+function parseArgs(argv: string[]): {
+  limit: number;
+  dryRun: boolean;
+  threshold: number;
+  statusOnly: boolean;
+  restaurantId: string | null;
+  name: string | null;
+} {
   let limit = 0;
   let dryRun = false;
   let threshold = THRESHOLD;
+  let statusOnly = false;
+  let restaurantId: string | null = null;
+  let name: string | null = null;
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--limit') {
       limit = Number(argv[index + 1]);
@@ -77,13 +82,25 @@ function parseArgs(argv: string[]): { limit: number; dryRun: boolean; threshold:
       if (!Number.isInteger(threshold) || threshold < 0) {
         throw new Error('--threshold must be a non-negative integer.');
       }
+    } else if (argv[index] === '--status-only') {
+      statusOnly = true;
+    } else if (argv[index] === '--restaurant-id') {
+      restaurantId = argv[index + 1] ?? null;
+      if (!restaurantId || !/^[0-9a-f-]{36}$/i.test(restaurantId)) {
+        throw new Error('--restaurant-id must be a UUID.');
+      }
+      index += 1;
+    } else if (argv[index] === '--name') {
+      name = argv[index + 1]?.trim() || null;
+      if (!name) throw new Error('--name requires a non-empty value.');
+      index += 1;
     }
   }
-  return { limit, dryRun, threshold };
+  return { limit, dryRun, threshold, statusOnly, restaurantId, name };
 }
 
 async function main(): Promise<void> {
-  const { limit, dryRun, threshold } = parseArgs(process.argv.slice(2));
+  const { limit, dryRun, threshold, statusOnly, restaurantId, name } = parseArgs(process.argv.slice(2));
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     host: process.env.PGHOST ?? 'localhost',
@@ -105,6 +122,16 @@ async function main(): Promise<void> {
   });
 
   try {
+    const queryValues: unknown[] = [threshold];
+    const targetFilters: string[] = [];
+    if (restaurantId) {
+      queryValues.push(restaurantId);
+      targetFilters.push(`r.id = $${queryValues.length}::uuid`);
+    }
+    if (name) {
+      queryValues.push(`%${name}%`);
+      targetFilters.push(`r.name ILIKE $${queryValues.length}`);
+    }
     const { rows } = await pool.query<ReviewTarget>(
       `SELECT rs.id AS "sourceId", rs.restaurant_id AS "restaurantId",
               rs.external_id AS "externalId", rs.source_url AS "sourceUrl", r.name
@@ -115,12 +142,19 @@ async function main(): Promise<void> {
          AND rs.status = 'active'
          AND rs.source_url IS NOT NULL
          AND r.status = 'active'
-         AND (
-           SELECT count(*)
-           FROM review v
-           WHERE v.restaurant_source_id = rs.id
-             AND (v.is_visible IS TRUE OR v.is_visible IS NULL)
-         ) < $1
+         ${targetFilters.length ? `AND (${targetFilters.join(' AND ')})` : ''}
+         AND (${statusOnly} OR (
+           rs.source_rating IS NULL
+           OR rs.source_review_count IS NULL
+           OR r.rating IS DISTINCT FROM rs.source_rating
+           OR r.review_count IS DISTINCT FROM rs.source_review_count
+           OR (
+             SELECT count(*)
+             FROM review v
+             WHERE v.restaurant_source_id = rs.id
+               AND (v.is_visible IS TRUE OR v.is_visible IS NULL)
+           ) < $1
+         ))
        ORDER BY (
            SELECT count(*)
            FROM review v
@@ -128,7 +162,7 @@ async function main(): Promise<void> {
              AND (v.is_visible IS TRUE OR v.is_visible IS NULL)
          ), r.name
        ${limit > 0 ? 'LIMIT ' + limit : ''}`,
-      [threshold],
+      queryValues,
     );
     const candidates = rows;
     if (candidates.length === 0) {
@@ -150,6 +184,7 @@ async function main(): Promise<void> {
     console.error(
       JSON.stringify({
         event: 'review_refresh_start',
+        statusOnly,
         dryRun,
         threshold,
         targets: candidates.length,
@@ -197,10 +232,7 @@ async function main(): Promise<void> {
         const target = candidates[scanCursor];
         scanCursor += 1;
         try {
-          const record = await provider.fetchPlaceReviewsByUrl(
-            target.sourceUrl,
-            target.name,
-          );
+          const record = await provider.fetchPlaceReviewsByUrl(target.sourceUrl, target.name);
           scanned += 1;
           if (!record) {
             noReviewsFound += 1;
@@ -278,7 +310,7 @@ process.on('uncaughtException', (error) => {
   console.error(
     JSON.stringify({
       event: 'review_refresh_uncaught_exception',
-      message: error instanceof Error ? error.stack ?? error.message : String(error),
+      message: error instanceof Error ? (error.stack ?? error.message) : String(error),
     }),
   );
   process.exitCode = 2;
@@ -287,7 +319,7 @@ process.on('unhandledRejection', (reason) => {
   console.error(
     JSON.stringify({
       event: 'review_refresh_unhandled_rejection',
-      message: reason instanceof Error ? reason.stack ?? reason.message : String(reason),
+      message: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
     }),
   );
   process.exitCode = 2;

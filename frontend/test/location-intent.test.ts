@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasLocationIntent } from '../src/lib/location-intent.ts';
+import { hasLocationIntent, hasWeatherIntent } from '../src/lib/location-intent.ts';
 
 test('detects common near-me phrases', () => {
   const hits = [
@@ -33,4 +33,20 @@ test('rejects non-location queries', () => {
 test('gần tối is not location intent while gần tôi is', () => {
   assert.equal(hasLocationIntent('trời gần tối'), false);
   assert.equal(hasLocationIntent('gần tôi'), true);
+});
+
+test('detects radius and distance constraints as location intent', () => {
+  const hits = [
+    'bún bò trong bán kính 3 km',
+    'quán cách tôi dưới 3 km',
+    'đừng chọn quán quá xa',
+  ];
+  for (const query of hits) assert.equal(hasLocationIntent(query), true, query);
+});
+
+test('weather is separate from explicit location intent', () => {
+  assert.equal(hasWeatherIntent('hiện tại trời đang mưa, ăn gì phù hợp'), true);
+  assert.equal(hasWeatherIntent('trời se lạnh nên ăn gì'), true);
+  assert.equal(hasLocationIntent('hiện tại trời đang mưa, ăn gì phù hợp'), false);
+  assert.equal(hasLocationIntent('trời se lạnh nên ăn gì'), false);
 });

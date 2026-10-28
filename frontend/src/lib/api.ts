@@ -109,6 +109,9 @@ export type BackendRestaurantSummary = {
   coverImageUrl: string | null;
   sourceUrl: string | null;
   distanceMeters?: number | null;
+  matchedDishes?: string[];
+  dishCandidate?: boolean;
+  dishEvidenceStatus?: 'verified_menu' | 'candidate_signal';
 };
 export type BackendRestaurantDetail = BackendRestaurantSummary & {
   description: string | null;
@@ -170,10 +173,23 @@ export type RecommendationItem = {
   restaurant: BackendRestaurantSummary;
   explanation?: string | null;
 };
+
+export async function recordRecommendationInteraction(
+  restaurantId: string,
+  type: 'open' | 'save' | 'dismiss',
+  query?: string,
+): Promise<void> {
+  await request('/recommendations/interactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ restaurantId, type, query }),
+  });
+}
 export type RecommendationPage = {
   items: RecommendationItem[];
   nextCursor: string | null;
   understanding: InterpretedSearch | null;
+  quality?: { code: string; message: string; dishes?: string[] } | null;
 };
 export type InterpretedSearch = {
   query: string;
@@ -184,6 +200,7 @@ export type InterpretedSearch = {
     attributes: string[];
     tastes?: string[];
     dishes?: Array<{ dish: string; confidence: number; evidence: string }>;
+    dishStyle?: 'dry' | 'brothy';
     priceLevel?: number;
     minRating?: number;
     openNow?: boolean;
@@ -231,6 +248,9 @@ export function toRestaurant(item: BackendRestaurantSummary): Restaurant {
     sourceUrl: item.sourceUrl,
     description: null,
     dishIds: [],
+    matchedDishes: item.matchedDishes,
+    dishCandidate: item.dishCandidate,
+    dishEvidenceStatus: item.dishEvidenceStatus,
     latitude: item.location.latitude,
     longitude: item.location.longitude,
   };
@@ -346,7 +366,11 @@ export async function getRecommendations(
 ): Promise<RecommendationPage> {
   const result = await request<{
     data: RecommendationItem[];
-    meta?: { nextCursor: string | null; understanding?: InterpretedSearch | null };
+    meta?: {
+      nextCursor: string | null;
+      understanding?: InterpretedSearch | null;
+      quality?: { code: string; message: string; dishes?: string[] } | null;
+    };
   }>('/recommendations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -357,6 +381,7 @@ export async function getRecommendations(
     items: result.data,
     nextCursor: result.meta?.nextCursor ?? null,
     understanding: result.meta?.understanding ?? null,
+    quality: result.meta?.quality ?? null,
   };
 }
 

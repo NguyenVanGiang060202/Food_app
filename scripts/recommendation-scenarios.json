@@ -1,0 +1,9 @@
+{
+  "k": 10,
+  "scenarios": [
+    {"name":"pizza","query":"pizza","expected":"pizza"},
+    {"name":"dry","query":"món khô","expected":"dry_style"},
+    {"name":"brothy","query":"món nước","expected":"brothy_style"},
+    {"name":"weather-nearby","query":"trời mưa, tìm món ấm bụng gần tôi","location":{"latitude":10.78,"longitude":106.69},"radiusMeters":5000,"expected":"weather_nearby"}
+  ]
+}

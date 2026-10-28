@@ -33,7 +33,9 @@ export class AiIntentService {
               process.env.AI_BASE_URL ?? 'https://generativelanguage.googleapis.com/v1beta/openai',
             apiKey,
             model: process.env.AI_MODEL ?? 'gemini-3.5-flash',
-            timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 15_000),
+            // Keep a bad provider from holding a recommendation request for a
+            // full minute. Deterministic parsing and SQL remain the fallback.
+            timeoutMs: Math.min(Math.max(Number(process.env.AI_TIMEOUT_MS ?? 15_000), 1_000), 15_000),
           })
         : null);
   }
@@ -49,7 +51,10 @@ export class AiIntentService {
       const system = buildIntentSystemPrompt(allowedSlugs);
       const raw = (await this.client.chatJson(system, `Câu hỏi: ${query.trim()}`)) as RawAiIntent;
       const intent = normalizeAiIntent(raw, allowedSlugs);
-      intent.canonicalDishes = await this.canonicalizeDishes(intent.dishes);
+      // A model may return a plausible dish that was never mentioned by the
+      // user. Only canonicalize dishes that are lexically grounded in the
+      // original query; a global menu match alone is not evidence of intent.
+      intent.canonicalDishes = await this.canonicalizeDishes(intent.dishes, query);
       return intent;
     } catch {
       return null;
@@ -69,35 +74,53 @@ export class AiIntentService {
     return slugs;
   }
 
-  private async canonicalizeDishes(dishes: string[]): Promise<CanonicalDishIntent[]> {
+  private async canonicalizeDishes(
+    dishes: string[],
+    query: string,
+  ): Promise<CanonicalDishIntent[]> {
+    const normalizedQuery = normalizeDishText(query);
     const canonical: CanonicalDishIntent[] = [];
     for (const dish of dishes.slice(0, 4)) {
-      const normalized = dish
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .trim();
+      const normalized = normalizeDishText(dish);
       if (!normalized) continue;
+      if (!isDishGroundedInQuery(normalizedQuery, normalized)) continue;
       const result = await this.database.query<{
         name: string;
         normalized_name: string;
-        similarity_score: number;
       }>(
-        `SELECT name, normalized_name, similarity(normalized_name, $1) AS similarity_score
-           FROM dish
-          WHERE status = 'available'
-            AND (normalized_name = $1 OR similarity(normalized_name, $1) >= 0.78)
-          ORDER BY (normalized_name = $1) DESC, similarity_score DESC, name
+        `SELECT COALESCE(cd.canonical_name, d.name) AS name,
+                COALESCE(cd.normalized_name, d.normalized_name) AS normalized_name
+           FROM dish d
+           LEFT JOIN canonical_dish cd ON cd.id = d.canonical_dish_id
+          WHERE d.status = 'available'
+            AND EXISTS (
+              SELECT 1
+                FROM dish_evidence de
+                JOIN menu_image_extraction mie ON mie.restaurant_image_id = de.restaurant_image_id
+               WHERE de.dish_id = d.id
+                 AND de.evidence_type = 'menu_image'
+                 AND mie.status = 'completed'
+                 AND mie.model IN ('website:menu:v1', 'website:menu-image-curated:v1', 'google_maps:menu-curated:v1')
+                 AND COALESCE(mie.raw_ocr_text, '') NOT ILIKE 'food_photo:%'
+            )
+            AND (
+              COALESCE(cd.normalized_name, d.normalized_name) = $1
+              OR EXISTS (
+                SELECT 1 FROM canonical_dish_alias cda
+                 WHERE cda.canonical_dish_id = cd.id
+                   AND cda.normalized_alias = $1
+              )
+            )
+          ORDER BY (COALESCE(cd.normalized_name, d.normalized_name) = $1) DESC, name
           LIMIT 1`,
         [normalized],
       );
       const row = result.rows[0];
       if (!row || typeof row.name !== 'string' || typeof row.normalized_name !== 'string') continue;
-      const exact = row.normalized_name === normalized;
       canonical.push({
         dish: row.name,
-        confidence: exact ? 1 : Math.min(0.95, Math.max(0.78, Number(row.similarity_score))),
-        evidence: exact ? 'exact' : 'similarity',
+        confidence: 1,
+        evidence: 'menu_evidence',
       });
     }
     return canonical.filter(
@@ -108,6 +131,86 @@ export class AiIntentService {
         ) === index,
     );
   }
+}
+
+// A shorter dish family must not swallow a concrete modifier from the user:
+// "phở bò tái" is not safe to canonicalize as "phở bò" unless the menu has
+// evidence for the requested variant. Filler, taste, weather and location
+// words are allowed around the dish phrase; food modifiers such as "tái" are
+// deliberately not on this list.
+function isDishGroundedInQuery(normalizedQuery: string, normalizedDish: string): boolean {
+  if (!normalizedQuery.includes(normalizedDish)) return false;
+  const residual = normalizedQuery
+    .replace(normalizedDish, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  const allowed = new Set([
+    'an',
+    'cho',
+    'co',
+    'cua',
+    'dang',
+    'day',
+    'de',
+    'di',
+    'do',
+    'gan',
+    'gi',
+    'gio',
+    'goi',
+    'hay',
+    'hien',
+    'hop',
+    'khu',
+    'mon',
+    'muon',
+    'nay',
+    'nhe',
+    'o',
+    'phu',
+    'quan',
+    'tim',
+    'toi',
+    'troi',
+    'va',
+    'voi',
+    'xem',
+    'y',
+    'thoi',
+    'tiet',
+    'mua',
+    'lanh',
+    'nong',
+    'mat',
+    'cay',
+    'ngot',
+    'man',
+    'beo',
+    're',
+    'ngon',
+    'phu',
+    'hop',
+  ]);
+  return residual.every((token, index) => {
+    if (/^\d+$/.test(token) || allowed.has(token)) return true;
+    // "tại Quận 10" is location context; standalone "tái" is a dish
+    // modifier and must remain a distinct intent.
+    return (
+      token === 'tai' &&
+      (residual[index + 1] === 'quan' ||
+        residual.slice(index, index + 3).join(' ') === 'tai o quan')
+    );
+  });
+}
+
+function normalizeDishText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLocaleLowerCase('vi-VN')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 function buildIntentSystemPrompt(allowedSlugs: ReadonlySet<string>): string {

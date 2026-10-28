@@ -2,6 +2,7 @@ export interface ParsedPlace {
   name: string | undefined;
   rating: number | undefined;
   reviewCount: number | undefined;
+  status?: 'active' | 'temporarily_closed' | 'permanently_closed' | 'unknown';
   address: string | undefined;
   category: string | undefined;
   url: string | undefined;

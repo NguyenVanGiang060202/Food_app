@@ -20,6 +20,29 @@ const LOCATION_PHRASES = [
   'canh cho toi', // cạnh chỗ tôi
   'tai vi tri cua toi', // tại vị trí của tôi
   'tai cho toi', // tại chỗ tôi
+  'trong ban kinh', // trong bán kính
+  'ban kinh', // bán kính ... km
+  'cach toi', // cách tôi ... km
+  'cach minh', // cách mình ... km
+  'khong qua xa', // không quá xa
+  'dung qua xa', // đừng quá xa
+  'qua xa', // quá xa / đừng chọn quán quá xa
+];
+
+const WEATHER_PHRASES = [
+  'troi mua',
+  'troi dang mua',
+  'mua ret',
+  'troi lanh',
+  'troi tro lanh',
+  'se lanh',
+  'gio lanh',
+  'mua nay',
+  'mua mua',
+  'troi nong',
+  'nang nong',
+  'nong buc',
+  'oi buc',
 ];
 
 const NON_LOCATION_EXCLUSIONS = [
@@ -44,4 +67,11 @@ export function hasLocationIntent(query: string): boolean {
   if (!saysToi && /gần\s+tối/.test(query)) return false;
   if (NON_LOCATION_EXCLUSIONS.some((pattern) => pattern.test(query))) return false;
   return true;
+}
+
+/** Weather is a recommendation context, not an implicit location filter. */
+export function hasWeatherIntent(query: string): boolean {
+  if (!query) return false;
+  const normalized = stripDiacritics(query);
+  return WEATHER_PHRASES.some((phrase) => normalized.includes(phrase));
 }

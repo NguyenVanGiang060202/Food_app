@@ -62,7 +62,15 @@ export class CanonicalUpsertPipeline {
   }
   async hasCompletedRun(providerCode: string, query: string, location: string): Promise<boolean> {
     const result = await this.pool.query<{ exists: boolean }>(
-      `SELECT EXISTS(SELECT 1 FROM crawl_run cr JOIN data_source ds ON ds.id = cr.data_source_id WHERE ds.code = $1 AND cr.status = 'completed' AND cr.target->>'query' = $2 AND cr.target->>'location' = $3)`,
+      `SELECT EXISTS(
+         SELECT 1
+         FROM crawl_run cr
+         JOIN data_source ds ON ds.id = cr.data_source_id
+         WHERE ds.code = $1
+           AND cr.status = 'completed'
+           AND lower(unaccent(COALESCE(cr.target->>'query', ''))) = lower(unaccent($2))
+           AND lower(unaccent(COALESCE(cr.target->>'location', ''))) = lower(unaccent($3))
+       )`,
       [providerCode, query, location],
     );
     return result.rows[0]?.exists ?? false;
@@ -125,7 +133,7 @@ export class CanonicalUpsertPipeline {
         restaurantId = restaurant.rows[0].id;
       }
       const sourceResult = await client.query<{ id: string }>(
-        `INSERT INTO restaurant_source (restaurant_id, data_source_id, external_id, source_url, source_name, source_rating, source_review_count, raw_data, last_seen_at, status) SELECT $1, ds.id, $2, $3, $4, $5, $6, $7::jsonb, $8, 'active' FROM data_source ds WHERE ds.code = $9 ON CONFLICT (data_source_id, external_id) DO UPDATE SET restaurant_id = EXCLUDED.restaurant_id, source_url = EXCLUDED.source_url, source_name = EXCLUDED.source_name, source_rating = EXCLUDED.source_rating, source_review_count = EXCLUDED.source_review_count, raw_data = EXCLUDED.raw_data, last_seen_at = EXCLUDED.last_seen_at, status = 'active' RETURNING id`,
+        `INSERT INTO restaurant_source (restaurant_id, data_source_id, external_id, source_url, source_name, source_rating, source_review_count, raw_data, last_seen_at, status) SELECT $1, ds.id, $2, $3, $4, $5, $6, $7::jsonb, $8, CASE WHEN $10 = 'permanently_closed' THEN 'invalid'::restaurant_source_status ELSE 'active'::restaurant_source_status END FROM data_source ds WHERE ds.code = $9 ON CONFLICT (data_source_id, external_id) DO UPDATE SET restaurant_id = EXCLUDED.restaurant_id, source_url = EXCLUDED.source_url, source_name = EXCLUDED.source_name, source_rating = EXCLUDED.source_rating, source_review_count = EXCLUDED.source_review_count, raw_data = EXCLUDED.raw_data, last_seen_at = EXCLUDED.last_seen_at, status = CASE WHEN $10 = 'permanently_closed' THEN 'invalid'::restaurant_source_status ELSE 'active'::restaurant_source_status END RETURNING id`,
         [
           restaurantId,
           record.externalId,
@@ -136,11 +144,12 @@ export class CanonicalUpsertPipeline {
           JSON.stringify(record.sourceMetadata),
           record.collectedAt,
           record.providerCode,
+          record.status ?? 'unknown',
         ],
       );
       const sourceId = sourceResult.rows[0].id;
       await client.query(
-        `UPDATE restaurant SET name = COALESCE(NULLIF($2,''), name), normalized_name = COALESCE(NULLIF($3,''), normalized_name), phone = COALESCE($4, phone), website_url = COALESCE($5, website_url), price_level = COALESCE($6, price_level), rating = COALESCE($7, rating), review_count = CASE WHEN $8::integer IS NULL THEN review_count ELSE $8 END, updated_at = now() WHERE id = $1`,
+        `UPDATE restaurant SET name = COALESCE(NULLIF($2,''), name), normalized_name = COALESCE(NULLIF($3,''), normalized_name), phone = COALESCE($4, phone), website_url = COALESCE($5, website_url), price_level = COALESCE($6, price_level), rating = COALESCE($7, rating), review_count = CASE WHEN $8::integer IS NULL THEN review_count ELSE $8 END, status = CASE WHEN $9 = 'permanently_closed' THEN 'permanently_closed'::restaurant_status WHEN $9 = 'temporarily_closed' THEN 'temporarily_closed'::restaurant_status WHEN $9 = 'active' THEN 'active'::restaurant_status ELSE status END, updated_at = now() WHERE id = $1`,
         [
           restaurantId,
           record.name,
@@ -150,6 +159,7 @@ export class CanonicalUpsertPipeline {
           record.priceLevel ?? null,
           record.rating ?? null,
           record.reviewCount ?? null,
+          record.status ?? 'unknown',
         ],
       );
       for (const slug of record.categories ?? []) {

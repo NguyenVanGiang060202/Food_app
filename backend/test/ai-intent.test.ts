@@ -137,7 +137,6 @@ test('AiIntentService canonicalizes an LLM dish against available menu data', as
           {
             name: 'Bún bò Huế',
             normalized_name: 'bun bo hue',
-            similarity_score: 1,
           },
         ],
       };
@@ -162,8 +161,87 @@ test('AiIntentService canonicalizes an LLM dish against available menu data', as
   const intent = await service.interpret('tìm bún bò huế cay');
 
   assert.deepEqual(intent?.canonicalDishes, [
-    { dish: 'Bún bò Huế', confidence: 1, evidence: 'exact' },
+    { dish: 'Bún bò Huế', confidence: 1, evidence: 'menu_evidence' },
   ]);
+});
+
+test('AiIntentService ignores raw vision OCR until menu evidence is curated', async () => {
+  let call = 0;
+  const database = {
+    query: async (text: string) => {
+      call += 1;
+      if (call === 1) return { rows: [{ slug: 'noodle' }] };
+      assert.match(text, /mie\.model IN/);
+      return { rows: [] };
+    },
+  };
+  const client = {
+    chatJson: async () => ({
+      categories: ['noodle'],
+      dishes: ['phở bò'],
+      tastes: [],
+      district: null,
+      priceLevel: null,
+      minRating: null,
+      openNow: null,
+      distanceKm: null,
+      summary: 'Tìm phở bò.',
+      semanticQuery: 'phở bò',
+    }),
+  };
+  const service = new AiIntentService(database as never, client as never);
+  const intent = await service.interpret('tìm phở bò');
+  assert.deepEqual(intent?.canonicalDishes, []);
+});
+
+test('AiIntentService ignores an LLM dish that is not grounded in the user query', async () => {
+  let call = 0;
+  const database = {
+    query: async () => {
+      call += 1;
+      if (call === 1) return { rows: [{ slug: 'bun' }] };
+      throw new Error('dish lookup should not run for an ungrounded dish');
+    },
+  };
+  const client = {
+    chatJson: async () => ({
+      categories: ['bun'],
+      dishes: ['bún bò Huế'],
+      tastes: [],
+      district: null,
+      priceLevel: null,
+      minRating: null,
+      openNow: null,
+      distanceKm: null,
+      summary: 'Bếp hiểu bạn muốn ăn phở.',
+    }),
+  };
+  const service = new AiIntentService(database as never, client as never);
+
+  const intent = await service.interpret('tìm phở bò');
+
+  assert.deepEqual(intent?.canonicalDishes, []);
+});
+
+test('AiIntentService rejects a similar but non-canonical dish even when menu data exists', async () => {
+  let call = 0;
+  const database = {
+    query: async () => {
+      call += 1;
+      if (call === 1) return { rows: [{ slug: 'bun' }] };
+      return { rows: [] };
+    },
+  };
+  const client = {
+    chatJson: async () => ({
+      categories: ['bun'], dishes: ['bún bò hương'], tastes: [], district: null,
+      priceLevel: null, minRating: null, openNow: null, distanceKm: null,
+      summary: 'Tìm món cụ thể.', semanticQuery: 'bún bò hương',
+    }),
+  };
+  const service = new AiIntentService(database as never, client as never);
+  const intent = await service.interpret('tìm bún bò hương');
+  assert.deepEqual(intent?.canonicalDishes, []);
 });
 
 test('AiIntentService falls back to null when the provider fails', async () => {

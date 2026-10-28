@@ -156,7 +156,7 @@ test('activeModel returns the most recently embedded model from the database', a
   const model = await service.activeModel();
   assert.equal(model, 'bge-m3@doc:v3');
   assert.equal(calls.length, 1);
-  assert.match(calls[0], /ORDER BY MAX\(created_at\) DESC/);
+  assert.match(calls[0], /ORDER BY COUNT\(\*\) DESC, MAX\(created_at\) DESC/);
 });
 
 test('activeModel caches the resolved model for the cache window', async () => {

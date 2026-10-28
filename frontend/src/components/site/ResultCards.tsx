@@ -3,6 +3,7 @@ import type { Dish, Restaurant } from '@/lib/food-data';
 import { Link } from 'react-router-dom';
 import { SaveRestaurantButton } from './SaveRestaurantButton';
 import { SmartImage } from './SmartImage';
+import { recordRecommendationInteraction } from '@/lib/api';
 
 const vnd = (n: number) => (n > 0 ? `${Math.round(n / 1000)}k₫` : null);
 
@@ -45,6 +46,7 @@ export function RestaurantResult({
   restaurant,
   onSelect,
   compact = false,
+  interactionQuery,
 }: {
   id: string;
   matching?: string[];
@@ -53,9 +55,13 @@ export function RestaurantResult({
   restaurant: Restaurant;
   onSelect?: () => void;
   compact?: boolean;
+  interactionQuery?: string;
 }) {
   const r = restaurant;
   const matchedNames = (matchingNames ?? matching ?? []).filter(Boolean).slice(0, 2);
+  const trackOpen = () => {
+    void recordRecommendationInteraction(r.id, 'open', interactionQuery).catch(() => undefined);
+  };
   if (compact) {
     const selectOnly = Boolean(onSelect);
     return (
@@ -97,7 +103,10 @@ export function RestaurantResult({
           ) : (
             <Link
               to={`/restaurants/${r.id}`}
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                trackOpen();
+              }}
               className="relative h-20 w-20 shrink-0 self-start overflow-hidden rounded-lg bg-muted"
             >
               <SmartImage
@@ -135,7 +144,10 @@ export function RestaurantResult({
                 ) : (
                   <Link
                     to={`/restaurants/${r.id}`}
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      trackOpen();
+                    }}
                     className="mt-0.5 block max-w-full font-display text-base leading-tight hover:text-primary"
                   >
                     <span className="line-clamp-2">{r.name}</span>
@@ -158,6 +170,11 @@ export function RestaurantResult({
                 </span>
               )}
             </div>
+            {r.dishEvidenceStatus === 'candidate_signal' && (
+              <div className="mt-1 text-[10px] leading-4 text-amber-700">
+                Có tín hiệu món, chưa xác minh menu
+              </div>
+            )}
             {explanation && (
               <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
                 {explanation}
@@ -171,6 +188,17 @@ export function RestaurantResult({
               >
                 Chi tiết <ArrowUpRight className="h-3 w-3" />
               </Link>
+              {r.dishEvidenceStatus === 'candidate_signal' && r.sourceUrl && (
+                <a
+                  href={r.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:underline"
+                >
+                  Kiểm tra menu <ArrowUpRight className="h-3 w-3" />
+                </a>
+              )}
               {selectOnly && (
                 <button
                   type="button"
@@ -197,7 +225,10 @@ export function RestaurantResult({
       <div className="flex min-h-0 flex-1 gap-3">
         <Link
           to={`/restaurants/${r.id}`}
-          onClick={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            trackOpen();
+          }}
           className="flex min-w-0 flex-1 gap-3 pr-10"
         >
           {r.image ? (
@@ -243,6 +274,11 @@ export function RestaurantResult({
             {matchedNames.length > 0 && (
               <div className="mt-1 truncate text-xs text-muted-foreground">
                 Có: {matchedNames.join(', ')}
+              </div>
+            )}
+            {r.dishEvidenceStatus === 'candidate_signal' && (
+              <div className="mt-1 text-[10px] leading-4 text-amber-700">
+                Có tín hiệu món, chưa xác minh menu
               </div>
             )}
             {explanation && (

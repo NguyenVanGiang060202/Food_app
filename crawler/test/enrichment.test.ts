@@ -105,6 +105,13 @@ test('classifyAttributes tags a dessert as sweet and cool', () => {
   assert.deepEqual([...codes].sort(), ['cool', 'snack', 'sweet']);
 });
 
+test('classifyAttributes does not infer grilled from a broad rice dish', () => {
+  const codes = classifyAttributes('com tam').map((attribute) => attribute.code);
+  assert.ok(!codes.includes('grilled'));
+  assert.ok(codes.includes('pork'));
+  assert.ok(codes.includes('filling'));
+});
+
 test('classifyAttributes returns nothing for an unknown dish', () => {
   assert.deepEqual(classifyAttributes('bi mat'), []);
 });

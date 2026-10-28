@@ -40,8 +40,7 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
     options: GoogleMapsCrawlerOptions,
   ) => Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl' | 'close'>;
   private sharedCrawler:
-    | Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl' | 'close'>
-    | undefined;
+    Pick<GoogleMapsPlaywrightCrawler, 'crawl' | 'crawlPlaceByUrl' | 'close'> | undefined;
 
   constructor(options: GoogleMapsPlaywrightProviderOptions = {}) {
     this.crawlerOptions = {
@@ -60,7 +59,8 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
   }
 
   async fetchPlaceReviewsByUrl(url: string, expectedName: string | undefined) {
-    const crawler = this.sharedCrawler ?? (this.sharedCrawler = this.crawlerFactory({ ...this.crawlerOptions }));
+    const crawler =
+      this.sharedCrawler ?? (this.sharedCrawler = this.crawlerFactory({ ...this.crawlerOptions }));
     const place = await crawler.crawlPlaceByUrl(url, expectedName);
     if (!place) return undefined;
     return this.toRestaurantRecord(place, { query: 'place-refresh' });
@@ -109,9 +109,7 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
 
     const rating = parseRating(place.rating?.toString());
     const reviewCount =
-      place.reviewCount === undefined
-        ? undefined
-        : parseReviewCount(place.reviewCount.toString());
+      place.reviewCount === undefined ? undefined : parseReviewCount(place.reviewCount.toString());
 
     return {
       providerCode: this.providerCode,
@@ -124,12 +122,11 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
       district: context?.district?.trim() || inferDistrict(query.location),
       countryCode: 'VN',
       categories: place.category
-        ? [normalizeCategorySlug(place.category)].filter((value): value is string =>
-            Boolean(value),
-          )
+        ? [normalizeCategorySlug(place.category)].filter((value): value is string => Boolean(value))
         : undefined,
       rating,
       reviewCount,
+      status: place.status,
       coordinates: place.coordinates,
       phone: place.phone,
       websiteUrl: place.website,
@@ -180,9 +177,11 @@ export class GoogleMapsPlaywrightProvider implements DataProviderAdapter {
 }
 
 function isMenuImage(menuImageUrls: string[] | undefined, imageUrl: string): boolean {
-  return menuImageUrls?.some(
-    (menuUrl) => normalizeGoogleImageUrl(menuUrl) === normalizeGoogleImageUrl(imageUrl),
-  ) ?? false;
+  return (
+    menuImageUrls?.some(
+      (menuUrl) => normalizeGoogleImageUrl(menuUrl) === normalizeGoogleImageUrl(imageUrl),
+    ) ?? false
+  );
 }
 
 function buildQuery(input: DiscoveryInput): { query: string; location?: string } {

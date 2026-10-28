@@ -53,10 +53,15 @@ const DISH_ATTRIBUTES: Record<string, string[]> = {
   'banh flan': ['sweet', 'cool', 'snack'],
   'banh kem': ['sweet', 'snack'],
   // Cơm
-  'com tam': ['grilled', 'pork', 'filling'],
+  // "Cơm tấm" is a broad dish identity, not proof that the offering is
+  // grilled. Menus commonly list braised, fried, or other variants under the
+  // same umbrella; only keep attributes that are explicit in the dish name.
+  'com tam': ['pork', 'filling'],
   'com rang': ['fried', 'filling'],
   'com ga': ['fried', 'chicken', 'filling'],
-  'com suon': ['grilled', 'pork', 'filling'],
+  // "Cơm sườn" still does not prove the cooking method. Keep the ingredient,
+  // and reserve `grilled` for names such as "sườn nướng"/"gà nướng".
+  'com suon': ['pork', 'filling'],
   'com thap cam': ['pork', 'filling'],
   'com bo luc lac': ['beef', 'filling'],
   'com hen': ['light', 'fresh', 'filling'],

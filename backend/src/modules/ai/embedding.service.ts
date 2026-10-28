@@ -32,7 +32,10 @@ export class EmbeddingService {
     this.dimensions = process.env.EMBEDDING_DIMENSIONS
       ? Number(process.env.EMBEDDING_DIMENSIONS)
       : null;
-    this.timeoutMs = Number(process.env.EMBEDDING_TIMEOUT_MS ?? 15_000);
+    // Embeddings are an optional ranking enhancement. Keep their runtime
+    // budget short so a provider/network hiccup cannot hold a recommendation
+    // request for the full HTTP timeout; structured retrieval remains useful.
+    this.timeoutMs = Math.min(Number(process.env.EMBEDDING_TIMEOUT_MS ?? 5_000), 5_000);
   }
 
   isEnabled(): boolean {
@@ -95,7 +98,10 @@ export class EmbeddingService {
         `SELECT model
            FROM restaurant_embedding
           GROUP BY model
-          ORDER BY MAX(created_at) DESC, MIN(id::text) DESC
+          -- Prefer the model with broad catalog coverage. A newer partial
+          -- backfill must not make semantic ranking NULL for almost every
+          -- restaurant; freshness breaks ties once coverage is comparable.
+          ORDER BY COUNT(*) DESC, MAX(created_at) DESC, MIN(id::text) DESC
           LIMIT 1`,
       );
       model = result.rows[0]?.model ?? null;

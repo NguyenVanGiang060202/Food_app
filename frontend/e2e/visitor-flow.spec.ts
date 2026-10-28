@@ -131,6 +131,66 @@ test('visitor sees a backend error state without a broken results layout', async
   }
 });
 
+test('nearby questions ask for location before calling recommendations', async ({ page }) => {
+  let recommendationCalls = 0;
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition(
+          _success: PositionCallback,
+          error: PositionErrorCallback,
+        ) {
+          error({ code: 1, message: 'location denied' } as GeolocationPositionError);
+        },
+      },
+    });
+  });
+  await page.route('**/api/v1/auth/me', async (route) =>
+    route.fulfill({ status: 401, json: { error: { message: 'Unauthenticated' } } }),
+  );
+  await page.route('**/api/v1/recommendations', async (route) => {
+    recommendationCalls += 1;
+    await route.fulfill({ json: { data: [] } });
+  });
+  await page.route('**/api/v1/dishes?*', async (route) => route.fulfill({ json: { data: [] } }));
+
+  await page.goto('/');
+  await page.getByPlaceholder(/Bụng đang réo gì/).fill('Tìm quán ăn gần tôi');
+  await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
+
+  const locationMessage = isMobileProject()
+    ? page.getByRole('button', { name: /Hãy bật định vị để Bếp tìm quán gần bạn/ })
+    : page.locator('section').getByText(/Hãy bật định vị để Bếp tìm quán gần bạn/).first();
+  await expect(locationMessage).toBeVisible();
+  expect(recommendationCalls).toBe(0);
+});
+
+test('nearby questions send coordinates and a default radius after location is enabled', async ({ page }) => {
+  let requestBody: {
+    location?: { latitude: number; longitude: number };
+    filters?: { radiusMeters?: number };
+  } | null = null;
+  await page.context().grantPermissions(['geolocation']);
+  await page.context().setGeolocation({ latitude: 10.78, longitude: 106.69 });
+  await page.route('**/api/v1/auth/me', async (route) =>
+    route.fulfill({ status: 401, json: { error: { message: 'Unauthenticated' } } }),
+  );
+  await page.route('**/api/v1/recommendations', async (route) => {
+    requestBody = route.request().postDataJSON() as { location?: { latitude: number; longitude: number } };
+    await route.fulfill({ json: { data: [] } });
+  });
+  await page.route('**/api/v1/dishes?*', async (route) => route.fulfill({ json: { data: [] } }));
+
+  await page.goto('/');
+  await page.getByPlaceholder(/Bụng đang réo gì/).fill('Tìm quán ăn gần tôi');
+  await page.getByRole('button', { name: 'Hỏi Bếp' }).click();
+
+  await expect.poll(() => requestBody).not.toBeNull();
+  expect(requestBody?.location).toEqual({ latitude: 10.78, longitude: 106.69 });
+  expect(requestBody?.filters?.radiusMeters).toBe(5000);
+});
+
 test('visitor can explore inspiration cards and hand the prompt to Bếp', async ({ page }) => {
   await page.route('**/api/v1/auth/me', async (route) =>
     route.fulfill({ status: 401, json: { error: { message: 'Unauthenticated' } } }),

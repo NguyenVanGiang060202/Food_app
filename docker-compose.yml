@@ -26,7 +26,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-food_app}:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/${POSTGRES_DB:-food_app}}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
@@ -50,6 +50,10 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-}
       EMBEDDING_TIMEOUT_MS: ${EMBEDDING_TIMEOUT_MS:-15000}
+      # Recommendation queries can evaluate verified menu evidence and
+      # proximity together; keep the DB budget above the old 5s default so
+      # the explicit nearby filter is usable on the full catalog.
+      PGSTATEMENT_TIMEOUT_MS: ${PGSTATEMENT_TIMEOUT_MS:-15000}
       SMTP_URL: ${SMTP_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -57,6 +61,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      IMAGE_STORAGE_DIR: ${IMAGE_STORAGE_DIR:-/app/storage/restaurant-images}
     ports:
       - '${BACKEND_BIND:-127.0.0.1:3000}:3000'
     depends_on:
@@ -74,6 +79,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    volumes:
+      - ${IMAGE_STORAGE_HOST_DIR:-./storage/restaurant-images}:/app/storage/restaurant-images
 
   redis:
     image: redis:7.4-alpine
@@ -119,9 +126,12 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-}
       EMBEDDING_CONCURRENCY: ${EMBEDDING_CONCURRENCY:-4}
+      IMAGE_STORAGE_DIR: ${IMAGE_STORAGE_DIR:-/app/storage/restaurant-images}
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ${IMAGE_STORAGE_HOST_DIR:-./storage/restaurant-images}:/app/storage/restaurant-images
     restart: 'no'
 
   frontend:

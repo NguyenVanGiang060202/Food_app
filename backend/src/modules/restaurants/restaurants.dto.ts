@@ -39,7 +39,9 @@ export class ListRestaurantsQueryDto {
   @IsOptional() @Transform(trim) @IsString() @Length(1, 500) cursor?: string;
   @IsOptional()
   @Transform(({ value }) =>
-    Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : value,
+    Array.isArray(value)
+      ? value.map((item) => String(item).trim()).filter(Boolean)
+      : typeof value === 'string' ? [value.trim()].filter(Boolean) : value,
   )
   @IsString({ each: true })
   tastes?: string[];
@@ -76,7 +78,9 @@ export class RecommendationFiltersDto {
   @IsOptional() @IsEnum(RestaurantSort) sort?: RestaurantSort;
   @IsOptional()
   @Transform(({ value }) =>
-    Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : value,
+    Array.isArray(value)
+      ? value.map((item) => String(item).trim()).filter(Boolean)
+      : typeof value === 'string' ? [value.trim()].filter(Boolean) : value,
   )
   @IsString({ each: true })
   taste?: string[];
@@ -102,4 +106,10 @@ export class RecommendationDto {
   filters?: RecommendationFiltersDto;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit = 10;
   @IsOptional() @Transform(trim) @IsString() @Length(1, 4000) cursor?: string;
+}
+
+export class RecommendationInteractionDto {
+  @Transform(trim) @IsString() @Length(1, 100) restaurantId!: string;
+  @Transform(trim) @IsString() @Length(1, 50) type!: 'open' | 'save' | 'dismiss';
+  @IsOptional() @Transform(trim) @IsString() @Length(1, 200) query?: string;
 }

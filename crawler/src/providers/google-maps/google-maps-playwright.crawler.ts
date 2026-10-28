@@ -268,7 +268,21 @@ export class GoogleMapsPlaywrightCrawler {
         await page.waitForTimeout(1500);
 
         const details = await this.extractDetailPanelData(page);
-        const menuImages = await this.extractMenuImages(page);
+        let menuImages = await this.extractMenuImages(page);
+        // Google Maps exposes different tabs by locale. Some Vietnamese place
+        // pages hide Menu, while the equivalent English view exposes the same
+        // tab as aria-label="Menu". Retry the read-only page in English before
+        // concluding that the place has no menu evidence.
+        if (menuImages.length === 0 && !/[?&]hl=en(?:&|$)/i.test(url)) {
+          const englishUrl = withGoogleMapsLocale(url, 'en');
+          if (englishUrl !== url) {
+            await page.goto(englishUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+            await page.waitForTimeout(3_000);
+            await this.dismissCookieConsent(page);
+            await page.waitForTimeout(1_500);
+            menuImages = await this.extractMenuImages(page);
+          }
+        }
         if (this.isMismatchedPanel(expectedName, details.name)) {
           console.error(
             JSON.stringify({
@@ -287,16 +301,17 @@ export class GoogleMapsPlaywrightCrawler {
             ? await this.extractReviewsFromDetail(page, placeName)
             : [];
 
-        if (reviews.length > 0 || attempt === MAX_ATTEMPTS) {
+        if (!this.extractReviews || this.maxReviewsPerPlace === 0 || reviews.length > 0 || attempt === MAX_ATTEMPTS) {
           return {
             name: placeName,
-            rating: undefined,
+            rating: details.rating,
             reviewCount: details.reviewCount,
             address: details.address,
             category: undefined,
             url,
             phone: details.phone,
             website: details.website,
+            status: details.status,
             priceLevel: details.priceLevel,
             openingHours: [],
             coordinates: parseCoordinatesFromUrl(url),
@@ -372,6 +387,7 @@ export class GoogleMapsPlaywrightCrawler {
         return;
       }
       if (details.reviewCount !== undefined) place.reviewCount = details.reviewCount;
+      if (details.rating !== undefined) place.rating = details.rating;
       if (details.phone !== undefined) place.phone = details.phone;
       if (details.website !== undefined) place.website = details.website;
       if (details.priceLevel !== undefined) place.priceLevel = details.priceLevel;
@@ -486,29 +502,62 @@ export class GoogleMapsPlaywrightCrawler {
     try {
       const menuPattern = /(?:^|[\s·•])(?:menu|thực đơn|thuc don)(?:$|[\s·•])/i;
       const panel = page.locator(SELECTORS.detailPanel).first();
-      const menuCandidates = panel.locator('button, [role="tab"], a, [role="button"]');
-      const candidateCount = await menuCandidates.count();
+      await panel.waitFor({ state: 'visible', timeout: 7_000 }).catch(() => undefined);
+      // Menu is lazy-rendered independently from the main place panel. Poll
+      // briefly so a valid tab is not mistaken for a missing tab merely
+      // because Maps has not mounted its tablist yet.
+      let menuCandidates = panel.locator('[role="tab"], button, a, [role="button"]');
+      let candidateCount = await menuCandidates.count();
+      const menuDeadline = Date.now() + 10_000;
+      while (Date.now() < menuDeadline && candidateCount === 0) {
+        await page.waitForTimeout(500);
+        menuCandidates = panel.locator('[role="tab"], button, a, [role="button"]');
+        candidateCount = await menuCandidates.count();
+      }
       let candidateIndex = -1;
+      let tabCandidateIndex = -1;
+      const explicitMenuTab = panel
+        .locator(
+          '[role="tab"][aria-label*="menu" i], [role="tab"][aria-label*="thực đơn" i], [role="tab"][aria-label*="thuc don" i]',
+        )
+        .first();
+      const explicitMenuTabCount = await explicitMenuTab.count();
+      if (explicitMenuTabCount > 0) {
+        candidateIndex = 0;
+      }
       for (let index = 0; index < candidateCount; index += 1) {
         const candidate = menuCandidates.nth(index);
-        const text = `${await candidate.innerText().catch(() => '')} ${await candidate.getAttribute('aria-label').catch(() => '')}`.trim();
+        const role = await candidate.getAttribute('role').catch(() => '');
+        const ariaLabel = await candidate.getAttribute('aria-label').catch(() => '');
+        const jsAction = await candidate.getAttribute('jsaction').catch(() => '');
+        // In the English Maps shell the global navigation button is also
+        // aria-label="Menu". It is not the restaurant's food-menu tab and
+        // must never be clicked or used as menu evidence.
+        if (
+          role !== 'tab' &&
+          ariaLabel?.trim().toLowerCase() === 'menu' &&
+          /navigationrail\.more/i.test(jsAction ?? '')
+        ) {
+          continue;
+        }
+        const text =
+          `${await candidate.innerText().catch(() => '')} ${ariaLabel ?? ''}`.trim();
         if (menuPattern.test(text)) {
-          candidateIndex = index;
-          break;
+          if (candidateIndex < 0) candidateIndex = index;
+          if (role === 'tab') {
+            tabCandidateIndex = index;
+            break;
+          }
         }
       }
+      if (tabCandidateIndex >= 0) candidateIndex = tabCandidateIndex;
       if (candidateIndex < 0) {
         console.error(JSON.stringify({ event: 'menu_tab_missing' }));
         return [];
       }
-      const candidate = menuCandidates.nth(candidateIndex);
-      const imageUrlsBeforeClick = new Set(
-        await page.evaluate(() =>
-          Array.from(document.querySelectorAll<HTMLImageElement>('img'))
-            .map((image) => image.currentSrc || image.src)
-            .filter((url) => url.startsWith('http')),
-        ),
-      );
+      const candidate = explicitMenuTabCount > 0 && tabCandidateIndex < 0
+        ? explicitMenuTab
+        : menuCandidates.nth(candidateIndex);
       let clicked = await candidate.click({ timeout: 5_000, force: true }).then(
         () => true,
         () => false,
@@ -524,7 +573,10 @@ export class GoogleMapsPlaywrightCrawler {
             (element.parentElement as HTMLElement | null)?.click();
             return true;
           })
-          .then(() => true, () => false);
+          .then(
+            () => true,
+            () => false,
+          );
         if (clicked) await page.waitForTimeout(1_000);
       }
       if (!clicked) {
@@ -532,72 +584,131 @@ export class GoogleMapsPlaywrightCrawler {
         return [];
       }
       await page.waitForTimeout(2_500);
-      const menuState = await page.evaluate(
-        ({ selectors, allowAfterMenuClick, beforeUrls }: { selectors: Record<string, string>; allowAfterMenuClick: boolean; beforeUrls: string[] }) => {
-        const panel = document.querySelector<HTMLElement>(selectors.detailPanel);
-        if (!panel) return { images: [], tabs: [] as string[], activeMenu: false };
-        const tabs = Array.from(panel.querySelectorAll<HTMLElement>('button, [role="tab"], a'))
-          .map((tab) => ({
-            text: (tab.innerText || '').trim(),
-            aria: tab.getAttribute('aria-label') || '',
-            selected: tab.getAttribute('aria-selected') || '',
-            current: tab.getAttribute('aria-current') || '',
-          }))
-          .filter((tab) => /menu|thực đơn|thuc don/i.test(`${tab.text} ${tab.aria}`));
-        const activeTabs = Array.from(
-          panel.querySelectorAll<HTMLElement>('[role="tab"], [aria-current="page"]'),
-        )
-          .filter(
-            (tab) =>
-              tab.getAttribute('aria-selected') === 'true' ||
-              tab.getAttribute('aria-current') === 'page',
+      // In the current Maps UI the tab is backed by a dedicated region. Wait
+      // for that region instead of relying only on a tab attribute: Maps can
+      // mark the tab selected before it has mounted the lazy image carousel.
+      await page
+        .locator('[role="region"][aria-label="Menu"]')
+        .first()
+        .waitFor({ state: 'visible', timeout: 7_000 })
+        .catch(() => undefined);
+      // Menu photos are lazy-loaded. Reading the DOM once only captures the
+      // first viewport and was the main reason a real Maps menu looked like a
+      // single ordinary food photo in the database. Walk both axes of the
+      // active menu region, collecting every rendered image as we go.
+      const collectedMenuImages = new Map<string, { url: string; altText?: string }>();
+      let menuState: { images: Array<{ url: string; altText?: string }>; tabs: string[]; activeMenu: boolean } = {
+        images: [],
+        tabs: [],
+        activeMenu: false,
+      };
+      let stagnantPasses = 0;
+      for (let pass = 0; pass < 12 && stagnantPasses < 2; pass += 1) {
+        const state = await page.evaluate((selectors: Record<string, string>) => {
+          const panel = document.querySelector<HTMLElement>(selectors.detailPanel);
+          if (!panel) return { images: [], tabs: [] as string[], activeMenu: false, progressed: false };
+          const menuRegion = panel.querySelector<HTMLElement>('[role="region"][aria-label="Menu"]');
+          const tabs = Array.from(panel.querySelectorAll<HTMLElement>('button, [role="tab"], a'))
+            .map((tab) => ({
+              text: (tab.innerText || '').trim(),
+              aria: tab.getAttribute('aria-label') || '',
+              selected: tab.getAttribute('aria-selected') || '',
+              current: tab.getAttribute('aria-current') || '',
+            }))
+            .filter((tab) => /menu|thực đơn|thuc don/i.test(`${tab.text} ${tab.aria}`));
+          const activeTabs = Array.from(
+            panel.querySelectorAll<HTMLElement>('[role="tab"], [aria-current="page"]'),
           )
-          .map((tab) => (tab.innerText || tab.getAttribute('aria-label') || '').trim())
-          .filter(Boolean);
-        const activeMenu = Array.from(
-          panel.querySelectorAll<HTMLElement>('[role="tab"][aria-selected="true"], [aria-current="page"]'),
-        ).some((tab) => /menu|thực đơn|thuc don/i.test(tab.innerText || tab.getAttribute('aria-label') || ''));
-        const imageRoot = panel;
-        const before = new Set(beforeUrls);
-        const result = activeMenu || allowAfterMenuClick
-          ? Array.from(
-              imageRoot.querySelectorAll<HTMLElement>(
-                'img, [data-photo-url], [data-src], [data-lazy-src], [style*="background-image"]',
-              ),
+            .filter(
+              (tab) =>
+                tab.getAttribute('aria-selected') === 'true' ||
+                tab.getAttribute('aria-current') === 'page',
             )
-          .map((element) => {
-            const image = element as HTMLImageElement;
-            const styleUrl = element
-              .getAttribute('style')
-              ?.match(/url\(["']?([^"')]+)["']?\)/i)?.[1];
-            return {
-              url:
-                image.currentSrc ||
-                image.src ||
-                element.getAttribute('data-photo-url') ||
-                element.getAttribute('data-src') ||
-                element.getAttribute('data-lazy-src') ||
-                styleUrl ||
-                '',
-              altText: image.alt || 'Google Maps menu tab',
-            };
-          })
-          .filter((image) => image.url.startsWith('http'))
-          .filter((image) => !before.has(image.url))
-          .slice(0, 30)
-          : [];
-        const fallback = result.length > 0 ? result : activeMenu
-          ? Array.from(panel.querySelectorAll<HTMLImageElement>('img[src^="http"]'))
-              .map((image) => ({ url: image.currentSrc || image.src, altText: image.alt || 'Google Maps menu tab' }))
-              .filter((image) => image.url.startsWith('http'))
-              .slice(0, 30)
-          : [];
-        return { images: fallback, tabs: [...activeTabs, ...tabs.map((tab) => `${tab.text} ${tab.aria} [${tab.selected || tab.current}]`)], activeMenu };
-        },
-        { selectors: SELECTORS, allowAfterMenuClick: true, beforeUrls: [...imageUrlsBeforeClick] },
+            .map((tab) => (tab.innerText || tab.getAttribute('aria-label') || '').trim())
+            .filter(Boolean);
+          const activeMenuTab = Array.from(
+            panel.querySelectorAll<HTMLElement>(
+              '[role="tab"][aria-selected="true"], [aria-current="page"]',
+            ),
+          ).some((tab) =>
+            /menu|thực đơn|thuc don/i.test(tab.innerText || tab.getAttribute('aria-label') || ''),
+          );
+          const activeMenu = Boolean(menuRegion) || activeMenuTab;
+          if (!activeMenu) return { images: [], tabs: activeTabs, activeMenu: false, progressed: false };
+
+          const imageRoot = menuRegion ?? panel;
+          const images = Array.from(
+            imageRoot.querySelectorAll<HTMLElement>(
+              'img, [data-photo-url], [data-src], [data-lazy-src], [style*="background-image"]',
+            ),
+          )
+            .map((element) => {
+              const image = element as HTMLImageElement;
+              const styleUrl = element
+                .getAttribute('style')
+                ?.match(/url\(["']?([^"')]+)["']?\)/i)?.[1];
+              return {
+                url:
+                  image.currentSrc ||
+                  image.src ||
+                  element.getAttribute('data-photo-url') ||
+                  element.getAttribute('data-src') ||
+                  element.getAttribute('data-lazy-src') ||
+                  styleUrl ||
+                  '',
+                altText: image.alt || 'Google Maps menu tab',
+              };
+            })
+            .filter((image) => image.url.startsWith('http'))
+            .filter((image, index, all) => all.findIndex((candidate) => candidate.url === image.url) === index);
+
+          const scrollables = [imageRoot, ...Array.from(imageRoot.querySelectorAll<HTMLElement>('*'))]
+            .filter((element, index, all) => all.indexOf(element) === index)
+            .filter((element) =>
+              element.scrollHeight > element.clientHeight + 8 || element.scrollWidth > element.clientWidth + 8,
+            );
+          let progressed = false;
+          for (const element of scrollables) {
+            if (element.scrollHeight > element.clientHeight + 8) {
+              const before = element.scrollTop;
+              element.scrollTop = Math.min(element.scrollHeight, before + Math.max(element.clientHeight * 0.85, 500));
+              progressed ||= element.scrollTop > before;
+            }
+            if (element.scrollWidth > element.clientWidth + 8) {
+              const before = element.scrollLeft;
+              element.scrollLeft = Math.min(element.scrollWidth, before + Math.max(element.clientWidth * 0.85, 500));
+              progressed ||= element.scrollLeft > before;
+            }
+          }
+          return {
+            images,
+            tabs: [
+              ...activeTabs,
+              ...tabs.map((tab) => `${tab.text} ${tab.aria} [${tab.selected || tab.current}]`),
+            ],
+            activeMenu,
+            progressed,
+          };
+        }, SELECTORS);
+        menuState = state;
+        for (const image of state.images) collectedMenuImages.set(image.url, image);
+        stagnantPasses = state.progressed ? 0 : stagnantPasses + 1;
+        if (state.progressed) await page.waitForTimeout(650);
+      }
+      menuState = {
+        ...menuState,
+        images: [...collectedMenuImages.values()].slice(0, 100),
+      };
+      console.error(
+        JSON.stringify({
+          event: 'menu_tab_state',
+          tabs: menuState.tabs,
+          activeMenu: menuState.activeMenu,
+        }),
       );
-      console.error(JSON.stringify({ event: 'menu_tab_state', tabs: menuState.tabs, activeMenu: menuState.activeMenu }));
-      console.error(JSON.stringify({ event: 'menu_images_extracted', count: menuState.images.length }));
+      console.error(
+        JSON.stringify({ event: 'menu_images_extracted', count: menuState.images.length }),
+      );
       return menuState.images;
     } catch {
       return [];
@@ -734,11 +845,13 @@ export class GoogleMapsPlaywrightCrawler {
 
   private async extractDetailPanelData(page: Page): Promise<{
     name: string | undefined;
+    rating: number | undefined;
     reviewCount: number | undefined;
     phone: string | undefined;
     website: string | undefined;
     address: string | undefined;
     priceLevel: number | undefined;
+    status: 'active' | 'temporarily_closed' | 'permanently_closed' | 'unknown';
     images: Array<{ url: string; altText?: string }>;
   }> {
     try {
@@ -746,19 +859,23 @@ export class GoogleMapsPlaywrightCrawler {
         (selectors: Record<string, string>) => {
           const result: {
             name: string | undefined;
+            rating: number | undefined;
             reviewCount: number | undefined;
             phone: string | undefined;
             website: string | undefined;
             address: string | undefined;
             priceLevel: number | undefined;
+            status: 'active' | 'temporarily_closed' | 'permanently_closed' | 'unknown';
             images: Array<{ url: string; altText?: string }>;
           } = {
             name: undefined,
+            rating: undefined,
             reviewCount: undefined,
             phone: undefined,
             website: undefined,
             address: undefined,
             priceLevel: undefined,
+            status: 'unknown',
             images: [],
           };
 
@@ -767,9 +884,41 @@ export class GoogleMapsPlaywrightCrawler {
           // can be the still-rendered results list — reading that reuses one
           // list item's review count for many places.
           const panel = document.querySelector('div[role="main"]') ?? document;
+          const panelText = (panel.textContent || '').toLocaleLowerCase();
+          if (/permanently closed|đã đóng cửa vĩnh viễn|đã đóng cửa lâu dài/.test(panelText)) {
+            result.status = 'permanently_closed';
+          } else if (/temporarily closed|tạm thời đóng cửa|tạm đóng cửa/.test(panelText)) {
+            result.status = 'temporarily_closed';
+          } else {
+            result.status = 'active';
+          }
 
           const heading = panel.querySelector('h1');
           if (heading) result.name = heading.textContent?.trim() || undefined;
+
+          const parseRating = (raw: string | null | undefined): number | undefined => {
+            if (!raw) return undefined;
+            const match = raw
+              .trim()
+              .replace(',', '.')
+              .match(/^(\d+(?:\.\d+)?)/);
+            if (!match) return undefined;
+            const value = Number(match[1]);
+            return Number.isFinite(value) && value >= 0 && value <= 5 ? value : undefined;
+          };
+
+          const ratingElement =
+            panel.querySelector<HTMLElement>('img[alt*="sao" i], img[alt*="star" i]') ??
+            panel.querySelector<HTMLElement>(
+              '[role="img"][aria-label*="sao" i], [role="img"][aria-label*="star" i]',
+            );
+          if (ratingElement) {
+            result.rating = parseRating(
+              ratingElement.getAttribute('aria-label') ||
+                ratingElement.getAttribute('alt') ||
+                ratingElement.textContent,
+            );
+          }
 
           const MAX_REVIEW_COUNT = 1_000_000;
           const parseCount = (raw: string | null | undefined): number | undefined => {
@@ -863,11 +1012,13 @@ export class GoogleMapsPlaywrightCrawler {
     } catch {
       return {
         name: undefined,
+        rating: undefined,
         reviewCount: undefined,
         phone: undefined,
         website: undefined,
         address: undefined,
         priceLevel: undefined,
+        status: 'unknown',
         images: [],
       };
     }
@@ -1039,6 +1190,7 @@ export class GoogleMapsPlaywrightCrawler {
       name: item.name,
       rating: parseRating(item.ratingText),
       reviewCount: parseReviewCount(item.reviewText),
+      status: 'unknown',
       address: item.address,
       category: item.category,
       url: item.url,
@@ -1077,5 +1229,15 @@ export class GoogleMapsPlaywrightCrawler {
         }),
       );
     }
+  }
+}
+
+function withGoogleMapsLocale(url: string, locale: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set('hl', locale);
+    return parsed.toString();
+  } catch {
+    return url;
   }
 }

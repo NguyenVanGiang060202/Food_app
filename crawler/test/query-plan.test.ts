@@ -15,9 +15,14 @@ test('query plan creates bounded targets and removes duplicate queries', () => {
   ]);
 });
 
-test('query plan supplies broad defaults without requiring one keyword per dish', () => {
+test('query plan supplies concrete dish defaults for dish-first coverage', () => {
   const plan = buildPlaywrightQueryPlan({ city: 'Ho Chi Minh City', limitPerQuery: 10 });
   assert.ok(plan.length > 10);
+  assert.ok(plan.some((target) => target.query === 'bún bò Huế'));
+  assert.ok(plan.some((target) => target.query === 'cơm tấm sườn'));
+  assert.ok(plan.some((target) => target.query === 'bánh mì thịt nướng'));
+  assert.ok(plan.some((target) => target.query === 'mì xào hải sản'));
+  assert.ok(plan.every((target) => !['quán ăn', 'bún phở', 'cơm'].includes(target.query)));
   assert.equal(
     plan.every((target) => target.limit === 10),
     true,

@@ -44,6 +44,9 @@ export interface RestaurantSummary {
   coverImageUrl: string | null;
   sourceUrl?: string | null;
   distanceMeters?: number | null;
+  matchedDishes?: string[];
+  dishCandidate?: boolean;
+  dishEvidenceStatus?: 'verified_menu' | 'candidate_signal';
 }
 export interface RestaurantDetail extends RestaurantSummary {
   description: string | null;
@@ -72,10 +75,29 @@ export interface RestaurantFilters {
   tastes?: string[];
   /** Canonical dish names resolved against available menu rows. */
   dishQueries?: string[];
+  /** Only return trusted exact menu matches with a verified VND dish price within this budget. */
+  maxDishPriceVnd?: number;
+  maxDishPriceExclusive?: boolean;
+  /** Exact dietary variants must not fall back to venue-name/OCR candidates. */
+  verifiedMenuOnly?: boolean;
+  /** A full catalog menu label must match the dish name itself, not another dish's description. */
+  exactDishNameOnly?: boolean;
+  /** Alternative exact dishes for broad contextual intent (for example rain). */
+  dishQueriesAny?: string[];
+  /** Explicit preparation/style constraint such as "món khô". */
+  dishStyle?: 'dry' | 'brothy';
+  /** Require the explicit food/cuisine term instead of semantic-profile matches. */
+  strictFoodQuery?: string;
+  /** Explicitly rejected foods/tastes; never relax these during fallback or pagination. */
+  excludedFoodTerms?: string[];
+  /** Ingredients that must occur together in one trusted dish or venue name. */
+  ingredientTerms?: string[];
   /** Semantic text kept on the recommendation cursor so a later page re-embeds the same query. */
   semanticQuery?: string;
   /** Query vector + active embedding model, attached internally for pgvector ranking. */
   embedding?: { vector: number[]; model: string } | null;
+  /** Authenticated user context used only for bounded recommendation signals. */
+  personalizationUserId?: string;
 }
 export interface RestaurantPage {
   data: RestaurantSummary[];

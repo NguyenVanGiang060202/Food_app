@@ -12,23 +12,49 @@ export interface PlaywrightQueryTarget {
   limit: number;
 }
 
+/**
+ * Concrete dishes used by the default discovery run.
+ *
+ * A restaurant returned by Google Maps for a broad category is not proof that
+ * it sells any particular dish. Keep broad/category discovery opt-in via
+ * CRAWL_QUERIES; the default dataset-building pass must create coverage for
+ * dish -> restaurant queries so menu OCR can verify the actual offering.
+ */
 export const DEFAULT_PLAYWRIGHT_QUERIES = [
-  'quán ăn',
-  'nhà hàng',
-  'quán cà phê',
-  'món Việt',
-  'bún phở',
-  'cơm',
-  'hủ tiếu mì',
-  'bánh mì',
-  'quán chay',
-  'lẩu',
-  'nướng BBQ',
-  'hải sản',
-  'món Huế',
-  'món Nhật',
-  'món Hàn',
-  'pizza',
+  'bún bò Huế',
+  'bún riêu',
+  'bún thịt nướng',
+  'bún đậu mắm tôm',
+  'phở bò',
+  'phở gà',
+  'hủ tiếu Nam Vang',
+  'mì Quảng',
+  'bánh canh cua',
+  'bánh mì thịt',
+  'bánh mì thịt nướng',
+  'mì xào hải sản',
+  'bánh xèo',
+  'cơm tấm sườn',
+  'cơm gà',
+  'cơm niêu',
+  'lẩu bò',
+  'lẩu Thái',
+  'gà nướng',
+  'vịt quay',
+  'ốc',
+  'hải sản nướng',
+  'pizza hải sản',
+  'sushi cá hồi',
+  'mì cay',
+  'cháo lòng',
+  'chè',
+  'cà phê trứng',
+];
+
+/** Broad discovery remains available for explicitly requested maintenance runs. */
+export const BROAD_PLAYWRIGHT_QUERIES = [
+  'quán ăn', 'nhà hàng', 'quán cà phê', 'món Việt', 'quán chay', 'lẩu',
+  'nướng BBQ', 'hải sản', 'món Huế', 'món Nhật', 'món Hàn', 'pizza',
   'tráng miệng',
 ];
 

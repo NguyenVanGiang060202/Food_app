@@ -7,6 +7,7 @@ import {
   removeSavedRestaurant,
   saveRestaurant,
   setCachedSavedStatus,
+  recordRecommendationInteraction,
 } from '@/lib/api';
 
 export function SaveRestaurantButton({
@@ -66,6 +67,7 @@ export function SaveRestaurantButton({
       const nextSaved = !saved;
       if (nextSaved) await saveRestaurant(restaurantId);
       else await removeSavedRestaurant(restaurantId);
+      if (nextSaved) void recordRecommendationInteraction(restaurantId, 'save').catch(() => undefined);
       setCachedSavedStatus(user.id, restaurantId, nextSaved);
       setSaved(nextSaved);
     } catch {

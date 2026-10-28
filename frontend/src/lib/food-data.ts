@@ -29,6 +29,9 @@ export type Restaurant = {
   dishIds: string[];
   latitude?: number | null;
   longitude?: number | null;
+  matchedDishes?: string[];
+  dishCandidate?: boolean;
+  dishEvidenceStatus?: 'verified_menu' | 'candidate_signal';
 };
 
 export const formatVnd = (n: number) => `${n.toLocaleString('vi-VN')}₫`;

@@ -29,11 +29,13 @@ import {
   type RecommendationItem,
 } from '@/lib/api';
 import { Stagger, StaggerItem } from '@/lib/motion';
-import { hasLocationIntent } from '@/lib/location-intent';
+import { hasLocationIntent, hasWeatherIntent } from '@/lib/location-intent';
 
 type Filters = {
   attrs: string[];
   maxDistanceKm?: number;
+  /** Prevents weather auto-nearby from being re-enabled after the user removes it. */
+  nearbyDisabled?: boolean;
   openNow: boolean;
   minRating?: number;
   priceLevel?: number;
@@ -95,6 +97,7 @@ function sameFilters(left: Filters, right: Filters): boolean {
   return (
     sortA(left.attrs) === sortA(right.attrs) &&
     left.maxDistanceKm === right.maxDistanceKm &&
+    left.nearbyDisabled === right.nearbyDisabled &&
     left.openNow === right.openNow &&
     left.minRating === right.minRating &&
     left.priceLevel === right.priceLevel
@@ -121,7 +124,11 @@ export function AskPage() {
   const restored = restoredRef.current;
   const [query, setQuery] = useState(restored?.query ?? '');
   const [searchContext, setSearchContext] = useState<SearchContext>(
-    restored?.searchContext ?? { keyword: '', filters: { attrs: [], openNow: false }, sort: 'relevance' },
+    restored?.searchContext ?? {
+      keyword: '',
+      filters: { attrs: [], openNow: false },
+      sort: 'relevance',
+    },
   );
   const [showFilters, setShowFilters] = useState(false);
   const [mobileListOpen, setMobileListOpen] = useState(false);
@@ -176,9 +183,12 @@ export function AskPage() {
       new Map(
         result.map((item) => [
           item.restaurant.id,
-          dishCatalog
-            .filter((dish) => dish.restaurantId === item.restaurant.id)
-            .map((dish) => dish.name),
+          [
+            ...(item.restaurant.matchedDishes ?? []),
+            ...dishCatalog
+              .filter((dish) => dish.restaurantId === item.restaurant.id)
+              .map((dish) => dish.name),
+          ].filter((name, index, values) => values.indexOf(name) === index),
         ]),
       ),
     [dishCatalog, result],
@@ -201,9 +211,7 @@ export function AskPage() {
         minRating: f.minRating,
         priceLevel: f.priceLevel,
         sort: restored.searchContext.sort,
-        ...(reqLoc && (f.maxDistanceKm ?? 5)
-          ? { radiusMeters: (f.maxDistanceKm ?? 5) * 1000 }
-          : {}),
+        ...(reqLoc && f.maxDistanceKm ? { radiusMeters: f.maxDistanceKm * 1000 } : {}),
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -225,7 +233,17 @@ export function AskPage() {
       return;
     }
     sessionStorage.setItem(ASK_WORKSPACE_KEY, JSON.stringify(next));
-  }, [query, searchContext, result, trending, dishCatalog, interpreted, location, nextCursor, active]);
+  }, [
+    query,
+    searchContext,
+    result,
+    trending,
+    dishCatalog,
+    interpreted,
+    location,
+    nextCursor,
+    active,
+  ]);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -294,7 +312,11 @@ export function AskPage() {
           );
           resolve(null);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+        // Desktop browsers often cannot provide a high-accuracy GPS fix. Prefer
+        // the cached/network location first so local testing does not time out;
+        // location-gated queries still wait for a real coordinate before any
+        // nearby API request is sent.
+        { enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 },
       );
     });
   };
@@ -303,7 +325,9 @@ export function AskPage() {
     const next = await locate();
     if (next && searchContext.keyword && submitted) {
       // If no distance filter set, apply a default 5km radius when locating
-      const nextFilters = filters.maxDistanceKm ? filters : { ...filters, maxDistanceKm: 5 };
+      const nextFilters = filters.maxDistanceKm
+        ? { ...filters, nearbyDisabled: undefined }
+        : { ...filters, maxDistanceKm: 5, nearbyDisabled: undefined };
       void runSearch(searchContext.keyword, nextFilters, next);
     }
     return next;
@@ -326,23 +350,67 @@ export function AskPage() {
     setTrending([]);
     setLoadingMore(false);
     try {
+      const weatherIntent = hasWeatherIntent(trimmed);
+      const autoNearby =
+        weatherIntent && nextFilters.maxDistanceKm === undefined && !nextFilters.nearbyDisabled;
+      const resolvedFilters = autoNearby
+        ? { ...nextFilters, maxDistanceKm: 5, nearbyDisabled: undefined }
+        : nextFilters;
       const locationIntent = hasLocationIntent(trimmed);
       const requestLocation =
         locationOverride !== undefined
           ? locationOverride
-          : (nextFilters.maxDistanceKm || locationIntent) && !location
+          : (resolvedFilters.maxDistanceKm || locationIntent) && !location
             ? await locate()
             : location;
-      const effectiveRadiusKm = nextFilters.maxDistanceKm ?? (requestLocation ? 5 : undefined);
+      const requiresLocation = Boolean(locationIntent || resolvedFilters.maxDistanceKm !== undefined);
+      // Do not widen a nearby request to a city-wide search when GPS is
+      // unavailable. Ask the user to enable location first.
+      if (requiresLocation && !requestLocation) {
+        // The visible results and retry target must belong to this request.
+        // Otherwise a failed nearby lookup leaves unrelated results on screen
+        // and the location button reruns the previous query.
+        activePayloadRef.current = null;
+        setResult([]);
+        setDishCatalog([]);
+        setActive(null);
+        setSearchContext((current) => ({ ...current, keyword: trimmed, filters: resolvedFilters }));
+        setTurns((current) => [
+          ...current,
+          {
+            kind: 'message',
+            query: trimmed,
+            answer: 'Hãy bật định vị để Bếp tìm quán gần bạn chính xác rồi thử lại nhé.',
+          },
+        ]);
+        return 0;
+      }
+      // Do not show an auto-enabled nearby chip when the browser denied or
+      // could not provide GPS. An explicit user-selected radius remains
+      // visible so the user can retry location manually.
+      const defaultNearbyRadius =
+        locationIntent &&
+        requestLocation &&
+        resolvedFilters.maxDistanceKm === undefined &&
+        !resolvedFilters.nearbyDisabled
+          ? 5
+          : undefined;
+      const filtersForRequest =
+        autoNearby && !requestLocation
+          ? { ...nextFilters, nearbyDisabled: true }
+          : defaultNearbyRadius
+            ? { ...resolvedFilters, maxDistanceKm: defaultNearbyRadius, nearbyDisabled: undefined }
+            : resolvedFilters;
+      const effectiveRadiusKm = filtersForRequest.maxDistanceKm;
       const payload: RecommendationPayload = {
         query: trimmed,
         limit: 50,
         location: requestLocation ?? undefined,
         filters: {
-          taste: nextFilters.attrs.length ? nextFilters.attrs : undefined,
-          openNow: nextFilters.openNow || undefined,
-          minRating: nextFilters.minRating,
-          priceLevel: nextFilters.priceLevel,
+          taste: filtersForRequest.attrs.length ? filtersForRequest.attrs : undefined,
+          openNow: filtersForRequest.openNow || undefined,
+          minRating: filtersForRequest.minRating,
+          priceLevel: filtersForRequest.priceLevel,
           sort: searchContext.sort,
           ...(requestLocation && effectiveRadiusKm
             ? { radiusMeters: effectiveRadiusKm * 1000 }
@@ -355,24 +423,22 @@ export function AskPage() {
         query: trimmed,
         limit: 12,
         filters: {
-          taste: nextFilters.attrs.length ? nextFilters.attrs : undefined,
-          openNow: nextFilters.openNow || undefined,
-          minRating: nextFilters.minRating,
-          priceLevel: nextFilters.priceLevel,
+          taste: filtersForRequest.attrs.length ? filtersForRequest.attrs : undefined,
+          openNow: filtersForRequest.openNow || undefined,
+          minRating: filtersForRequest.minRating,
+          priceLevel: filtersForRequest.priceLevel,
           sort: 'rating',
         },
       };
-      const trendingPromise = getRecommendations(trendingPayload, controller.signal).catch(
-        () => ({
-          items: [] as RecommendationItem[],
-          nextCursor: null as string | null,
-          understanding: null as InterpretedSearch | null,
-        }),
-      );
+      const trendingPromise = getRecommendations(trendingPayload, controller.signal).catch(() => ({
+        items: [] as RecommendationItem[],
+        nextCursor: null as string | null,
+        understanding: null as InterpretedSearch | null,
+      }));
       const page = await getRecommendations(payload, controller.signal);
       const trendingPage = await trendingPromise;
       const dishes = await listDishes(12, trimmed, {
-        openNow: nextFilters.openNow || undefined,
+        openNow: filtersForRequest.openNow || undefined,
       }).catch(() => []);
       activePayloadRef.current = payload;
       const foundCount = page.items.length;
@@ -384,15 +450,17 @@ export function AskPage() {
       // request could disagree with the recommendation and made the chat claim
       // to understand something different from what it actually searched.
       setInterpreted(page.understanding);
-      setSearchContext((current) => ({ ...current, keyword: trimmed, filters: nextFilters }));
+      setSearchContext((current) => ({ ...current, keyword: trimmed, filters: filtersForRequest }));
       setTurns((current) => [
         ...current,
         {
           kind: 'message',
           query: trimmed,
           answer: page.items.length
-            ? `Bếp tìm được ${page.items.length} quán hợp cơn thèm này.`
-            : 'Bếp chưa thấy quán hợp gu. Nới bộ lọc một chút nhé?',
+            ? page.quality?.code === 'CONSTRAINT_UNVERIFIED'
+              ? `Bếp tìm được ${page.items.length} quán để tham khảo. ${page.quality.message}`
+              : `Bếp tìm được ${page.items.length} quán hợp cơn thèm này.`
+            : page.quality?.message ?? 'Bếp chưa thấy quán hợp gu. Nới bộ lọc một chút nhé?',
         },
       ]);
       return foundCount;
@@ -449,7 +517,11 @@ export function AskPage() {
     if (!trimmed) return;
     setQuery('');
     setMobileChatOpen(false);
-    const found = await runSearch(trimmed, filters);
+    const searchFilters =
+      trimmed !== searchContext.keyword && !filters.maxDistanceKm
+        ? { ...filters, nearbyDisabled: undefined }
+        : filters;
+    const found = await runSearch(trimmed, searchFilters);
     if (found > 0) setMobileListOpen(true);
   };
   const refineSearch = (nextFilters: Filters) => {
@@ -591,7 +663,9 @@ export function AskPage() {
           {filters.maxDistanceKm && (
             <FilterChip
               label={`Trong ${filters.maxDistanceKm}km`}
-              onRemove={() => refineSearch({ ...filters, maxDistanceKm: undefined })}
+              onRemove={() =>
+                refineSearch({ ...filters, maxDistanceKm: undefined, nearbyDisabled: true })
+              }
             />
           )}
           {filters.openNow && (
@@ -623,7 +697,9 @@ export function AskPage() {
             </button>
           )}
         </div>
-        {locationError && <LocationErrorBanner error={locationError} onDismiss={() => setLocationError(null)} />}
+        {locationError && (
+          <LocationErrorBanner error={locationError} onDismiss={() => setLocationError(null)} />
+        )}
         <div className="rounded-2xl border border-border bg-card p-3 shadow-lift">
           <textarea
             ref={textareaRef}
@@ -673,6 +749,7 @@ export function AskPage() {
                 restaurant={restaurant}
                 explanation={result[index]?.explanation}
                 matchingNames={matchingDishNames.get(restaurant.id)}
+                interactionQuery={searchContext.keyword}
                 onSelect={() => setActive(restaurant.id)}
                 compact
               />
@@ -726,6 +803,7 @@ export function AskPage() {
                   restaurant={restaurant}
                   explanation={trending[index]?.explanation}
                   matchingNames={matchingDishNames.get(restaurant.id)}
+                  interactionQuery={searchContext.keyword}
                   onSelect={() => setActive(restaurant.id)}
                   compact
                 />
@@ -847,7 +925,10 @@ export function AskPage() {
                 </button>
               </div>
               {locationError && (
-                <LocationErrorBanner error={locationError} onDismiss={() => setLocationError(null)} />
+                <LocationErrorBanner
+                  error={locationError}
+                  onDismiss={() => setLocationError(null)}
+                />
               )}
             </div>
           </>
@@ -1024,7 +1105,10 @@ export function AskPage() {
                 </div>
                 {locationError && (
                   <div className="mt-4">
-                    <LocationErrorBanner error={locationError} onDismiss={() => setLocationError(null)} />
+                    <LocationErrorBanner
+                      error={locationError}
+                      onDismiss={() => setLocationError(null)}
+                    />
                   </div>
                 )}
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -1108,7 +1192,8 @@ function SearchContextChips({
   if (context.filters.maxDistanceKm)
     chips.push({
       label: `Trong ${context.filters.maxDistanceKm} km`,
-      remove: () => onRemove({ ...context.filters, maxDistanceKm: undefined }),
+      remove: () =>
+        onRemove({ ...context.filters, maxDistanceKm: undefined, nearbyDisabled: true }),
     });
   if (context.filters.openNow)
     chips.push({
@@ -1200,6 +1285,7 @@ function FilterPanel({
       ...filters,
       attrs: preset.attrs,
       maxDistanceKm: preset.maxDistanceKm,
+      nearbyDisabled: preset.maxDistanceKm === undefined,
       openNow: preset.openNow ?? false,
     });
   return (
@@ -1212,7 +1298,9 @@ function FilterPanel({
           </p>
         </div>
         <button
-          onClick={() => onChange({ attrs: [], openNow: false })}
+          onClick={() =>
+            onChange({ attrs: [], openNow: false, maxDistanceKm: undefined, nearbyDisabled: true })
+          }
           className="text-[11px] text-muted-foreground hover:text-foreground"
         >
           Đặt lại
@@ -1345,13 +1433,7 @@ const LOCATE_ERROR_MESSAGES: Record<LocateError['code'], string> = {
   unsupported: 'Trình duyệt này không hỗ trợ định vị.',
 };
 
-function LocationErrorBanner({
-  error,
-  onDismiss,
-}: {
-  error: LocateError;
-  onDismiss: () => void;
-}) {
+function LocationErrorBanner({ error, onDismiss }: { error: LocateError; onDismiss: () => void }) {
   return (
     <div className="flex items-start gap-2 rounded-2xl border border-amber-400/40 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-900">
       <span className="min-w-0 flex-1">{LOCATE_ERROR_MESSAGES[error.code]}</span>

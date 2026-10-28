@@ -23,7 +23,7 @@ export interface AiIntent {
 export interface CanonicalDishIntent {
   dish: string;
   confidence: number;
-  evidence: 'exact' | 'similarity';
+  evidence: 'exact' | 'similarity' | 'menu_evidence';
 }
 
 export interface RawAiIntent {

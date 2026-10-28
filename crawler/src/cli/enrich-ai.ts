@@ -96,6 +96,47 @@ const truncate = (text: string, max: number): string =>
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+function parseModelJson(content: string): unknown {
+  // Local models occasionally wrap the object in a markdown fence or emit a
+  // literal newline inside a JSON string. Strip only those transport-level
+  // artifacts; malformed/incomplete objects still fail closed and are retried.
+  const fenced = content.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+  const start = fenced.indexOf('{');
+  const end = fenced.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('AI response did not contain a JSON object.');
+  const candidate = fenced.slice(start, end + 1);
+  let normalized = '';
+  let inString = false;
+  let escaped = false;
+  for (const char of candidate) {
+    if (escaped) {
+      normalized += char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\' && inString) {
+      normalized += char;
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      normalized += char;
+      continue;
+    }
+    if (inString && char === '\n') {
+      normalized += '\\n';
+    } else if (inString && char === '\r') {
+      normalized += '\\r';
+    } else if (inString && char === '\t') {
+      normalized += '\\t';
+    } else {
+      normalized += char;
+    }
+  }
+  return JSON.parse(normalized);
+}
+
 async function generateProfiles(
   baseUrl: string,
   apiKey: string,
@@ -176,7 +217,7 @@ async function generateProfiles(
       };
       const content = payload.choices?.[0]?.message?.content;
       if (!content) throw new Error('AI provider returned an empty response.');
-      const parsed = JSON.parse(content) as unknown;
+      const parsed = parseModelJson(content);
       const items = (parsed as { items?: unknown } | undefined)?.items;
       if (!Array.isArray(items)) throw new Error('AI response is missing an items array.');
       const profiles: ProfileItem[] = [];
@@ -277,6 +318,16 @@ async function main(): Promise<void> {
               AND d.status = 'available'
               AND d.name IS NOT NULL
               AND length(trim(d.name)) > 0
+              AND EXISTS (
+                SELECT 1
+                FROM dish_evidence trusted_de
+                JOIN menu_image_extraction trusted_mie
+                  ON trusted_mie.restaurant_image_id = trusted_de.restaurant_image_id
+                WHERE trusted_de.dish_id = d.id
+                  AND trusted_de.evidence_type = 'menu_image'
+                  AND trusted_mie.status = 'completed'
+                  AND trusted_mie.model IN ('website:menu:v1', 'website:menu-image-curated:v1', 'google_maps:menu-curated:v1')
+              )
             ORDER BY d.id
             LIMIT ${MAX_DISHES}
           ) x

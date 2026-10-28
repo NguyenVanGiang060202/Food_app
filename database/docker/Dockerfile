@@ -1,9 +1,9 @@
-FROM postgis/postgis:16-3.5
+FROM pgvector/pgvector:pg16
 
-# pgvector is installed on top of the official PostgreSQL + PostGIS image so
+# PostGIS is installed on top of the official PostgreSQL + pgvector image so
 # restaurant, geospatial, and semantic-search data share one local database.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends postgresql-16-pgvector \
+  && apt-get install -y --no-install-recommends postgis postgresql-16-postgis-3 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY database/migrations/001_initial_schema.sql /docker-entrypoint-initdb.d/010_initial_schema.sql

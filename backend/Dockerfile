@@ -15,5 +15,6 @@ COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/backend/package.json backend/package.json
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/backend/dist backend/dist
+RUN mkdir -p /app/storage/restaurant-images
 EXPOSE 3000
 CMD ["node", "backend/dist/main.js"]

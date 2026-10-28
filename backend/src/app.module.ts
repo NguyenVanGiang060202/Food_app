@@ -11,15 +11,24 @@ import { AuthModule } from './modules/auth/auth.module';
 import { SavedModule } from './modules/saved/saved.module';
 import { AiIntentService } from './modules/ai/ai-intent.service';
 import { EmbeddingService } from './modules/ai/embedding.service';
+import { FoodIntelligenceModule } from './modules/food-intelligence/food-intelligence.module';
+import { RecommendationEventsRepository } from './modules/search/recommendation-events.repository';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
-  imports: [DatabaseModule, CategoriesModule, AdminModule, AuthModule, SavedModule],
+  imports: [DatabaseModule, CategoriesModule, AdminModule, AuthModule, SavedModule, FoodIntelligenceModule, MediaModule],
   controllers: [
     HealthController,
     RestaurantsController,
     SearchController,
     RecommendationsController,
   ],
-  providers: [RestaurantsService, RestaurantsRepository, AiIntentService, EmbeddingService],
+  providers: [
+    RestaurantsService,
+    RestaurantsRepository,
+    AiIntentService,
+    EmbeddingService,
+    RecommendationEventsRepository,
+  ],
 })
 export class AppModule {}

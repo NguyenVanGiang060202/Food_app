@@ -4,6 +4,19 @@ import { DiscoveryCrawlExecutor } from '../jobs/discovery-crawl.executor';
 import { buildPlaywrightQueryPlan } from './playwright-query-plan';
 import type { CrawlRunJob } from '../queue/crawl-run.repository';
 
+/**
+ * Windows PowerShell 5.1 can transcode non-ASCII arguments before they reach
+ * Node. Google Maps accepts the accent-free Vietnamese spelling just as well,
+ * so normalize only the dish query. Locations are generated inside Node and
+ * must retain accents because the provider uses them to infer districts.
+ */
+function toAsciiSearchText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd');
+}
+
 const CITY = process.env.CRAWL_CITY || 'Ho Chi Minh City';
 const DISTRICTS =
   process.env.CRAWL_DISTRICTS?.split(',')
@@ -48,7 +61,12 @@ async function main(): Promise<void> {
     districts: activeDistricts,
     limitPerQuery: LIMIT_PER_QUERY,
     queries: QUERIES,
-  }).slice(0, MAX_QUERIES);
+  })
+    .map((target) => ({
+      ...target,
+      query: toAsciiSearchText(target.query),
+    }))
+    .slice(0, MAX_QUERIES);
   const provider = new GoogleMapsPlaywrightProvider({
     maxResults: LIMIT_PER_QUERY,
     maxScrollAttempts: Number(process.env.CRAWL_MAX_SCROLL_ATTEMPTS || 20),

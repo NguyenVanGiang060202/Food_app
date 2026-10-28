@@ -15,6 +15,7 @@ function parseArgs(argv: string[]) {
   let limit = 0;
   let dryRun = false;
   let refresh = false;
+  const restaurantIds: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--limit') {
       limit = Number(argv[index + 1]);
@@ -25,16 +26,20 @@ function parseArgs(argv: string[]) {
       dryRun = true;
     } else if (argv[index] === '--refresh') {
       refresh = true;
+    } else if (argv[index] === '--restaurant-id') {
+      const id = argv[index + 1];
+      if (!id || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error('--restaurant-id must be a UUID.');
+      restaurantIds.push(id);
     }
   }
-  return { limit, dryRun, refresh };
+  return { limit, dryRun, refresh, restaurantIds };
 }
 
 async function main(): Promise<void> {
-  const { limit, dryRun, refresh } = parseArgs(process.argv.slice(2));
+  const { limit, dryRun, refresh, restaurantIds } = parseArgs(process.argv.slice(2));
   const loader = new EmbeddingLoader();
   try {
-    const summary = await loader.embed({ limit, dryRun, refresh });
+    const summary = await loader.embed({ limit, dryRun, refresh, restaurantIds });
     console.log(
       JSON.stringify({
         event: 'embedding_completed',

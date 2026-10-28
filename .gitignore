@@ -33,6 +33,10 @@ test-results/
 run-local.bat
 run-local.ps1
 
+# Local cleanup/quarantine and moved manual tools
+.local-cleanup-*/
+local-tools/
+
 # Editor and operating-system files
 .DS_Store
 Thumbs.db
@@ -40,3 +44,7 @@ Thumbs.db
 .vscode/
 
 *.dump
+storage/restaurant-images/
+
+# Local crawler exports and review artifacts
+crawler/data/

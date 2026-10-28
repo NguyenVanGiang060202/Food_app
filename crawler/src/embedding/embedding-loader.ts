@@ -75,6 +75,7 @@ export interface EmbedOptions {
   limit?: number;
   dryRun?: boolean;
   refresh?: boolean;
+  restaurantIds?: string[];
 }
 
 export interface EmbeddingTarget {
@@ -150,6 +151,7 @@ export class EmbeddingLoader {
     limit = 0,
     dryRun = false,
     refresh = false,
+    restaurantIds = [],
   }: EmbedOptions = {}): Promise<EmbeddingSummary> {
     const providerModel = process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small';
     const model = embeddingModelId(providerModel);
@@ -196,12 +198,28 @@ export class EmbeddingLoader {
     };
 
     try {
+      const queryParams: unknown[] = [model];
+      const restaurantFilter = restaurantIds.length
+        ? (() => {
+            queryParams.push(restaurantIds);
+            return ` AND r.id = ANY($${queryParams.length}::uuid[])`;
+          })()
+        : '';
       const { rows } = await this.pool.query<EmbeddingRow>(
         `SELECT r.id,
                 r.name,
                 r.normalized_name,
                 r.price_level,
-                r.semantic_profile,
+                COALESCE(
+                  (SELECT fp.semantic_text
+                     FROM restaurant_food_profile fp
+                    WHERE fp.restaurant_id = r.id
+                      AND fp.status = 'ready'
+                      AND fp.semantic_text IS NOT NULL
+                    ORDER BY fp.version DESC
+                    LIMIT 1),
+                  r.semantic_profile
+                ) AS semantic_profile,
                 loc.district,
                 loc.city,
                 COALESCE(
@@ -217,7 +235,16 @@ export class EmbeddingLoader {
                    END))
                      FROM dish d
                     WHERE d.restaurant_id = r.id
-                      AND d.status = 'available'), '[]'::jsonb
+                      AND d.status = 'available'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM dish_evidence trusted_de
+                        JOIN menu_image_extraction trusted_mie ON trusted_mie.restaurant_image_id = trusted_de.restaurant_image_id
+                        WHERE trusted_de.dish_id = d.id
+                          AND trusted_de.evidence_type = 'menu_image'
+                          AND trusted_mie.status = 'completed'
+                          AND trusted_mie.model IN ('website:menu:v1', 'website:menu-image-curated:v1', 'google_maps:menu-curated:v1')
+                      )), '[]'::jsonb
                 ) AS dishes,
                 COALESCE(
                   (SELECT jsonb_agg(DISTINCT fa.name)
@@ -225,7 +252,16 @@ export class EmbeddingLoader {
                      JOIN dish_attribute da ON da.dish_id = d.id
                      JOIN food_attribute fa ON fa.id = da.attribute_id AND fa.is_active = true
                     WHERE d.restaurant_id = r.id
-                      AND d.status = 'available'), '[]'::jsonb
+                      AND d.status = 'available'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM dish_evidence trusted_de
+                        JOIN menu_image_extraction trusted_mie ON trusted_mie.restaurant_image_id = trusted_de.restaurant_image_id
+                        WHERE trusted_de.dish_id = d.id
+                          AND trusted_de.evidence_type = 'menu_image'
+                          AND trusted_mie.status = 'completed'
+                          AND trusted_mie.model IN ('website:menu:v1', 'website:menu-image-curated:v1', 'google_maps:menu-curated:v1')
+                      )), '[]'::jsonb
                 ) AS attributes,
                 COALESCE(
                   (SELECT jsonb_agg(x.review_content)
@@ -247,9 +283,9 @@ export class EmbeddingLoader {
                   LIMIT 1) AS existing_hash
          FROM restaurant r
          JOIN location loc ON loc.id = r.location_id
-        WHERE r.status IN ('active', 'temporarily_closed')
+        WHERE r.status IN ('active', 'temporarily_closed')${restaurantFilter}
         ORDER BY r.id`,
-        [model],
+        queryParams,
       );
       summary.scanned = rows.length;
 
