@@ -19,10 +19,16 @@ if ($LASTEXITCODE -ne 0) {
 
 function Invoke-SqlFile([string]$File) {
   Write-Host "Applying $File"
-  # Let cmd.exe stream the UTF-8 file as bytes. This avoids PowerShell's text
-  # pipeline transcoding Vietnamese characters before psql receives them.
   $resolvedFile = (Resolve-Path $File).Path
-  cmd /c "type `"$resolvedFile`" | docker compose exec -T postgres psql --set=client_encoding=UTF8 -v ON_ERROR_STOP=1 -U $User -d $Database"
+  if ($IsWindows -or $env:OS -eq 'Windows_NT') {
+    # Let cmd.exe stream the UTF-8 file as bytes on Windows. This avoids
+    # PowerShell's text pipeline transcoding Vietnamese characters.
+    cmd /c "type `"$resolvedFile`" | docker compose exec -T postgres psql --set=client_encoding=UTF8 -v ON_ERROR_STOP=1 -U $User -d $Database"
+  } else {
+    # PowerShell 7 uses UTF-8 on Linux, so stream the SQL file directly to psql.
+    Get-Content -Raw -Encoding UTF8 $resolvedFile |
+      docker compose exec -T postgres psql --set=client_encoding=UTF8 -v ON_ERROR_STOP=1 -U $User -d $Database
+  }
   if ($LASTEXITCODE -ne 0) {
     throw "Could not apply SQL file $File."
   }
